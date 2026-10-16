@@ -1,11 +1,12 @@
 # CI/CD for HelpDesk.
 #
-#   test  ──►  build + Trivy scan + push to GHCR  ──►  deploy to EKS with Helm
+#   test  ──►  build + Trivy scan + push to GHCR  ──►  GitOps commit of the new tags  ──►  verify on EKS
 #
-# Deploy needs two GitHub repository *variables* (Settings → Secrets and variables → Actions → Variables):
+# Deployment is GitOps: ArgoCD (argocd/helpdesk-application.yaml) syncs helm/helpdesk from main, so the
+# pipeline only commits the new image tags. The verify job needs two repository *variables*:
 #   AWS_DEPLOY_ROLE_ARN  — `terraform output github_deploy_role_arn`
 #   EKS_CLUSTER_NAME     — `terraform output cluster_name`
-# No AWS keys are stored anywhere: the job gets short-lived credentials through GitHub OIDC.
+# No AWS keys are stored anywhere: verify gets short-lived credentials through GitHub OIDC.
 name: HelpDesk CI/CD
 
 on:
@@ -144,48 +145,61 @@ jobs:
             echo "- \`${{ steps.names.outputs.frontend }}:${{ github.sha }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  deploy:
-    name: Deploy to EKS (Helm)
+  gitops:
+    name: GitOps - commit new image tags
     needs: build-scan-push
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      # ArgoCD watches helm/helpdesk on main. Committing the new tags *is* the deployment:
+      # no cluster credentials are needed here. Pushes made with GITHUB_TOKEN don't start another run.
+      - name: Point values-image.yaml at this commit's images
+        run: |
+          sed -i -E "s|^(    tag: ).*|\1${GITHUB_SHA}|" helm/helpdesk/values-image.yaml
+          sed -i -E "0,/repository:/s|(repository: ).*|\1${{ needs.build-scan-push.outputs.backend_image }}|" helm/helpdesk/values-image.yaml
+          sed -i -E "0,/frontend:/!s|(repository: ).*helpdesk-frontend|\1${{ needs.build-scan-push.outputs.frontend_image }}|" helm/helpdesk/values-image.yaml
+          cat helm/helpdesk/values-image.yaml
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add helm/helpdesk/values-image.yaml
+          if git diff --cached --quiet; then echo "Tags already current"; exit 0; fi
+          git commit -m "chore(gitops): deploy ${GITHUB_SHA::7} [skip ci]"
+          for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break; sleep 5; done
+
+  verify:
+    name: Verify ArgoCD rollout on EKS
+    needs: gitops
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN != ''
     runs-on: ubuntu-latest
     environment: production
     permissions: {contents: read, id-token: write}
-    defaults:
-      run:
-        working-directory: .
     steps:
-      - uses: actions/checkout@v7
-
       - name: Get AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # Pinned: with "latest", a failed release lookup silently falls back to Helm 3,
-      # which does not know --rollback-on-failure (Helm 4) and fails the deploy.
-      - uses: azure/setup-helm@v5
-        with:
-          version: v4.3.1
-
       - name: Configure kubectl
         run: aws eks update-kubeconfig --region "$AWS_REGION" --name "${{ vars.EKS_CLUSTER_NAME }}"
 
-      - name: Helm upgrade
+      - name: Wait until ArgoCD has rolled out this commit
         run: |
-          helm upgrade --install helpdesk ./helm/helpdesk \
-            --namespace "$NAMESPACE" \
-            -f helm/helpdesk/values-prod.yaml \
-            --set backend.image.repository=${{ needs.build-scan-push.outputs.backend_image }} \
-            --set backend.image.tag=${{ github.sha }} \
-            --set frontend.image.repository=${{ needs.build-scan-push.outputs.frontend_image }} \
-            --set frontend.image.tag=${{ github.sha }} \
-            --rollback-on-failure --wait --timeout 10m
-
-      - name: Verify rollout
-        run: |
-          kubectl rollout status deployment/helpdesk-backend -n "$NAMESPACE" --timeout=180s
-          kubectl rollout status deployment/helpdesk-frontend -n "$NAMESPACE" --timeout=180s
+          for d in helpdesk-backend helpdesk-frontend; do
+            for i in $(seq 1 60); do
+              img=$(kubectl get deployment "$d" -n "$NAMESPACE" -o jsonpath='{.spec.template.spec.containers[0].image}')
+              case "$img" in *":${GITHUB_SHA}") echo "$d -> $img"; break;; esac
+              [ "$i" = 60 ] && { echo "::error::$d still runs $img after 10 minutes"; exit 1; }
+              sleep 10
+            done
+            kubectl rollout status deployment/"$d" -n "$NAMESPACE" --timeout=300s
+          done
           kubectl get pods,svc,ingress,hpa -n "$NAMESPACE"
-          helm history helpdesk -n "$NAMESPACE" --max 5

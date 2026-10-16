@@ -10,8 +10,10 @@ The application is deliberately small. The point of the project is the delivery 
               │ build:  docker build backend + frontend (tag = commit SHA)                  │
               │ scan:   Trivy — fail on fixable HIGH/CRITICAL CVEs                          │
               │ push:   ghcr.io/<user>/helpdesk-{backend,frontend}:<sha>                    │
-              │ deploy: OIDC → AWS (no stored keys) → helm upgrade --install on EKS         │
+              │ gitops: commit the new tags to helm/helpdesk/values-image.yaml              │
+              │ verify: OIDC → AWS (no stored keys) → wait until EKS runs this commit       │
               └─────────────────────────────────────────────────────────────────────────────┘
+ ArgoCD (in EKS) ──► watches helm/helpdesk on main ──► syncs the helpdesk namespace (GitOps)
  Terraform ──► AWS VPC (2 public + 2 private subnets, NAT) ──► EKS + managed node group
                                                              │
      Internet ─► ingress-nginx (AWS NLB) ─► Ingress ──┬─ /     ─► frontend Service ─► React/Nginx pods (×2)
@@ -28,7 +30,8 @@ The application is deliberately small. The point of the project is the delivery 
 | Database | PostgreSQL 16 |
 | Tests | pytest (isolated in-memory SQLite per test), ruff lint, Node test runner |
 | Containers | Docker multi-stage builds, non-root users, Docker Compose |
-| CI/CD | GitHub Actions → Trivy → GHCR → Helm deploy to EKS via OIDC |
+| CI/CD | GitHub Actions → Trivy → GHCR → GitOps commit of the image tags |
+| GitOps | Argo CD v3.5 syncs the Helm chart from Git to EKS (auto-sync, prune, self-heal) |
 | Infrastructure | Terraform: VPC + EKS (+ EBS CSI, metrics-server, GitHub OIDC role) |
 | Kubernetes | Helm chart: Deployments, Services, StatefulSet, Ingress, HPA, ServiceMonitor |
 | Observability | kube-prometheus-stack (Prometheus, Grafana, Alertmanager) |
@@ -39,7 +42,8 @@ The application is deliberately small. The point of the project is the delivery 
 
 ```text
 Helpdesk/
-├── .github/workflows/ci-cd.yml   CI/CD pipeline: test → build + Trivy + push → deploy
+├── .github/workflows/ci-cd.yml   CI/CD pipeline: test → build + Trivy + push → GitOps commit → verify
+├── argocd/                  Argo CD install values + the HelpDesk Application (GitOps)
 ├── backend/                 FastAPI app
 │   ├── app/                 main.py (health/ready/metrics), routes.py (ticket API), models, schemas, db, config
 │   ├── alembic/versions/    0001_create_tickets.py — tickets + ticket_comments tables
@@ -144,7 +148,8 @@ The workflow is [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml). It
 |---|---|
 | **test** | ruff → pytest → `npm ci && npm test && npm run build` → `helm lint` |
 | **build-scan-push** | Builds both images tagged with `github.sha`, scans each with **Trivy** (`HIGH,CRITICAL`, `ignore-unfixed`, `exit-code: 1`), then pushes to **GHCR** (on pushes only, not PRs) |
-| **deploy** | Assumes an AWS role through **GitHub OIDC**, runs `aws eks update-kubeconfig`, then `helm upgrade --install --rollback-on-failure --wait` with the new SHA tags |
+| **gitops** | Writes the new SHA into `helm/helpdesk/values-image.yaml` and commits it to `main` (`chore(gitops): deploy <sha> [skip ci]`). This commit *is* the deployment: Argo CD sees it and syncs |
+| **verify** | Assumes an AWS role through **GitHub OIDC**, waits until both Deployments on EKS run the new SHA, and checks the rollout |
 
 The image tag is the commit SHA, so every running pod traces back to one exact commit (`kubectl get deploy helpdesk-backend -n helpdesk -o wide`).
 
@@ -153,10 +158,10 @@ The image tag is the commit SHA, so every running pod traces back to one exact c
    - `AWS_DEPLOY_ROLE_ARN` = `terraform output -raw github_deploy_role_arn`
    - `EKS_CLUSTER_NAME` = `terraform output -raw cluster_name`
 
-   Until these exist, the deploy job is skipped and test/build/scan/push still run.
+   Until these exist, the verify job is skipped; test, build, scan, push and the GitOps commit still run.
 2. After the first push, open *GitHub → your profile → Packages → helpdesk-backend / helpdesk-frontend → Package settings* and set the visibility to **Public**, so EKS can pull without credentials. If you'd rather keep them private, see `k8s/ghcr-pull-secret.example.sh`.
 
-No AWS keys are stored in GitHub. The deploy role can only be assumed by workflow runs on `main` of this repository, and inside EKS it is limited to the `helpdesk` namespace.
+No AWS keys are stored in GitHub, and the pipeline never pushes to the cluster: Argo CD pulls from Git. The OIDC role can only be assumed by this repository's `production` environment, and inside EKS it is limited to the `helpdesk` namespace.
 
 ## 5. Security scanning (Trivy)
 
@@ -200,7 +205,21 @@ helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheu
   -n monitoring --create-namespace -f monitoring/kube-prometheus-stack-values.yaml
 ```
 
-Deploy the app. CI does this on every push to `main`; this is the manual equivalent:
+Deploy the app with **Argo CD (GitOps)**. This is a one-time setup; after it, every push to `main` deploys itself:
+
+```bash
+helm repo add argo https://argoproj.github.io/argo-helm
+helm upgrade --install argocd argo/argo-cd --version 10.10.3 -n argocd --create-namespace -f argocd/argocd-values.yaml
+kubectl apply -f argocd/helpdesk-application.yaml
+
+kubectl get application helpdesk -n argocd                  # SYNC STATUS = Synced, HEALTH STATUS = Healthy
+kubectl port-forward -n argocd svc/argocd-server 8080:80    # UI at http://localhost:8080, user admin
+kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}' | base64 -d
+```
+
+The GitOps flow: **commit → CI tests, scans and pushes the images → CI commits the new tags to `helm/helpdesk/values-image.yaml` → Argo CD detects the commit (polls every 60 s) and syncs → the verify job confirms EKS runs the new SHA.** Rolling back is `git revert` of the `chore(gitops)` commit. With `selfHeal` on, a manual `kubectl edit` is reverted to what Git says.
+
+Without Argo CD (for example on a local kind cluster), the manual equivalent is:
 
 ```bash
 helm upgrade --install helpdesk ./helm/helpdesk -n helpdesk -f helm/helpdesk/values-prod.yaml \
@@ -286,7 +305,8 @@ cd terraform && terraform destroy
 - **Terraform state is local.** An S3 backend is prepared but commented out in `terraform/versions.tf`. A team would enable it, with state locking.
 - **Trivy runs with `ignore-unfixed`.** The build fails only on HIGH or CRITICAL CVEs that already have a fix. Vulnerabilities with no available fix are reported but don't block the pipeline.
 - **The ingress-nginx project is retired upstream.** It's kept because the course uses it. A newer setup would use the AWS Load Balancer Controller or Gateway API.
-- **The Helm version is pinned (`v4.3.1`) in CI.** With `latest`, a failed version lookup once fell back to Helm 3, and the deploy step failed on the Helm 4 flag `--rollback-on-failure`.
+- **Argo CD polls Git every 60 seconds** (no webhook, because the Argo CD server isn't exposed to the internet), so a deploy starts up to a minute after the GitOps commit.
+- **The database Secret isn't managed by Argo CD.** It was created by the original Helm install, and the chart references it through `postgres.existingSecret`, because Argo CD renders charts without cluster access and couldn't reuse a generated password. A fresh cluster would create it once, or use Sealed Secrets or External Secrets.
 - **The screenshots in `evidence/`** were taken while the project lived in the `session21-python/` folder of `princekumar0509/devops-heros`. The full commit history was carried over to this repo.
 
 ---
@@ -296,7 +316,7 @@ cd terraform && terraform destroy
 1. **App:** open the Ingress URL, create a ticket, open it, reply as the agent (it moves to *In progress*), resolve it.
 2. **API:** use `/docs` to create, read, update and delete a ticket.
 3. **DB:** `kubectl exec -n helpdesk helpdesk-postgres-0 -- psql -U helpdesk -d helpdesk -c "select id,subject,status from tickets"`
-4. **Git → CI:** change something visible (e.g. the sidebar subtitle in `frontend/src/components/Sidebar.jsx`), commit, push, and watch the pipeline: tests → build → Trivy → GHCR → deploy.
+4. **Git → CI → GitOps:** change something visible (e.g. the sidebar subtitle in `frontend/src/components/Sidebar.jsx`), commit, push, and watch the pipeline: tests → build → Trivy → GHCR → GitOps commit, then Argo CD syncing the new tag.
 5. **Registry:** GHCR package page showing the new `<sha>` tag.
 6. **Kubernetes:** `kubectl get pods,svc,ingress,hpa -n helpdesk`, `helm history helpdesk -n helpdesk`, and refresh the browser to show the change live.
 7. **Terraform:** walk through `terraform/main.tf` and show the VPC and EKS in the AWS console.
