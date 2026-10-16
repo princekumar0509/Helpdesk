@@ -267,6 +267,30 @@ cd terraform && terraform destroy
 
 ---
 
+## Presentation (`demo/`)
+
+| File | What it is |
+|---|---|
+| [`demo/HelpDesk-Presentation.pptx`](demo/HelpDesk-Presentation.pptx), [`.pdf`](demo/HelpDesk-Presentation.pdf) | 14-slide deck: overview, architecture, modules, CI/CD, Terraform, Kubernetes, observability, lessons learned |
+| [`demo/HelpDesk-Presentation.mp4`](demo/HelpDesk-Presentation.mp4) | Recorded walkthrough: slides, then the live system (app, tests, Docker, pipeline, Terraform + AWS Console, Kubernetes, HPA, Prometheus, Grafana) |
+| [`demo/SCRIPT.md`](demo/SCRIPT.md) | Narration script, part by part |
+| [`demo/make_video.py`](demo/make_video.py) | Assembles the video from the screen recordings and the narration |
+
+## Known issues and limitations
+
+- **PostgreSQL runs inside the cluster** (one StatefulSet replica on a 5 GiB EBS volume). It's fine for a demo, but it has no replication, automated backups or point-in-time recovery. Production would use Amazon RDS.
+- **One NAT gateway** for both private subnets keeps costs down, but it's a single point of failure for outbound traffic if its availability zone fails. Production would use one NAT gateway per AZ.
+- **The AWS Free plan constrains the cluster.** EC2 only allows free-tier instance types, so nodes are `m7i-flex.large`, and the account's 5-vCPU quota caps the cluster at 2 nodes. There's no Cluster Autoscaler, so the HPA scales pods (2–6) but not nodes.
+- **No TLS and no custom domain.** The app is served over plain HTTP on the AWS load balancer's hostname. Production would add a DNS name, ACM or cert-manager, and HTTPS on the Ingress.
+- **The app has no login.** Anyone with the URL can create or change tickets, and agent names are free text.
+- **Terraform state is local.** An S3 backend is prepared but commented out in `terraform/versions.tf`. A team would enable it, with state locking.
+- **Trivy runs with `ignore-unfixed`.** The build fails only on HIGH or CRITICAL CVEs that already have a fix. Vulnerabilities with no available fix are reported but don't block the pipeline.
+- **The ingress-nginx project is retired upstream.** It's kept because the course uses it. A newer setup would use the AWS Load Balancer Controller or Gateway API.
+- **The Helm version is pinned (`v4.3.1`) in CI.** With `latest`, a failed version lookup once fell back to Helm 3, and the deploy step failed on the Helm 4 flag `--rollback-on-failure`.
+- **The screenshots in `evidence/`** were taken while the project lived in the `session21-python/` folder of `princekumar0509/devops-heros`. The full commit history was carried over to this repo.
+
+---
+
 ## Final demo script
 
 1. **App:** open the Ingress URL, create a ticket, open it, reply as the agent (it moves to *In progress*), resolve it.
