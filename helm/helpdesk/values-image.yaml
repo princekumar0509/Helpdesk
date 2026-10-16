@@ -3,8 +3,8 @@
 backend:
   image:
     repository: ghcr.io/princekumar0509/helpdesk-backend
-    tag: 53ba3da50e9c60f2d0ca5159d62090647a71b1a0
+    tag: 8fce24eefce317a7f748c256db1e941d163aaed5
 frontend:
   image:
     repository: ghcr.io/princekumar0509/helpdesk-frontend
-    tag: 53ba3da50e9c60f2d0ca5159d62090647a71b1a0
+    tag: 8fce24eefce317a7f748c256db1e941d163aaed5
