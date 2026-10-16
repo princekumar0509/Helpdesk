@@ -1,6 +1,6 @@
 # HelpDesk: presentation script
 
-**Total length:** about 12 minutes, in 12 parts.
+**Total length:** about 14 minutes, in 14 parts (12 recorded, plus the new parts 2b and 8b).
 
 **How to record your voice:**
 - Record **one audio file per part**, named `part01.m4a`, `part02.m4a` … `part12.m4a`. Phone voice-memo files (`.m4a`, `.mp3`, `.wav`) all work.
@@ -39,6 +39,27 @@
 > The infrastructure on AWS (a VPC and an EKS Kubernetes cluster) is created with **Terraform**. The pipeline then deploys the application to EKS with **Helm**.
 >
 > Users reach the app through an **AWS load balancer** and an **NGINX Ingress**. **Prometheus** collects metrics from the backend, and **Grafana** shows them on a dashboard.
+
+---
+
+## Part 2b: Codebase walkthrough (≈ 60 s) · NEW, record as `part02b.m4a`
+
+**On screen:** the Helpdesk repository on GitHub: the folder list, then the key files.
+
+**Say:**
+> Here is the repository. Everything is in one place.
+>
+> `backend` is the FastAPI service. `app/routes.py` has the ticket API, `models.py` the database tables, and the `alembic` folder the database migrations. The `tests` folder has the 19 pytest tests.
+>
+> `frontend` is the React application, built with Vite and served by Nginx.
+>
+> `docker-compose.yml` runs the whole stack locally.
+>
+> `terraform` creates the AWS network and the EKS cluster. `helm/helpdesk` is the Helm chart that runs the app on Kubernetes, and the `argocd` folder tells Argo CD to deploy that chart.
+>
+> `monitoring` holds the Prometheus and Grafana settings, and `.github/workflows/ci-cd.yml` is the CI/CD pipeline.
+>
+> One design decision: the image tag is always the Git commit SHA, so every running pod can be traced back to one exact commit.
 
 ---
 
@@ -135,6 +156,23 @@
 > `terraform plan` shows exactly what will be created. Here in the AWS Console are the VPC with its subnets, the EKS cluster in *Active* state, the node group, and the two EC2 worker nodes.
 >
 > One real problem I hit: my AWS account is on the **Free plan**, which only allows free-tier instance types. My first choice, `t3.medium`, was rejected, so I switched to `m7i-flex.large`, which is free-tier eligible and has more memory.
+
+---
+
+## Part 8b: GitOps with Argo CD (≈ 60 s) · NEW, record as `part08b.m4a`
+
+**On screen:** the Argo CD web UI with the `helpdesk` application, then a new deploy syncing.
+
+**Say:**
+> For deployment I use **GitOps with Argo CD**.
+>
+> Argo CD runs inside the EKS cluster and watches the Helm chart in my GitHub repository. Git is the single source of truth: whatever is on the `main` branch is what runs in the cluster.
+>
+> The pipeline never pushes to the cluster directly. After the images pass the tests and the Trivy scan, the pipeline commits the new image tag to the `values-image.yaml` file. Argo CD sees that commit and syncs the application.
+>
+> Here the `helpdesk` application is *Synced* and *Healthy*. This tree shows every Kubernetes resource it manages: the deployments, pods, services, ingress, the Postgres StatefulSet, the autoscaler and the ServiceMonitor.
+>
+> Self-heal is on, so if someone changes something by hand in the cluster, Argo CD puts it back to what Git says. To roll back, I simply revert the commit in Git.
 
 ---
 
