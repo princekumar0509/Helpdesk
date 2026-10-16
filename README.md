@@ -2,7 +2,7 @@
 
 **Name:** Prince Kumar · **Roll No:** 24bc10658 · **DevOps course, Session 21 final capstone**
 
-**▶ [Demo video (14 min)](demo/HelpDesk-Presentation.mp4)** · **[Slides (PDF)](demo/HelpDesk-Presentation.pdf)** · **[Slides (PPTX)](demo/HelpDesk-Presentation.pptx)**
+**▶ [Demo video (Google Drive, 14 min)](https://drive.google.com/file/d/1XKZFxCKt3bHWjRsZ8xwDCqDI7-ifr4Tv/view?usp=sharing)** · **[Slides (PDF)](demo/HelpDesk-Presentation.pdf)** · **[Slides (PPTX)](demo/HelpDesk-Presentation.pptx)**
 
 **HelpDesk is a customer-support ticketing app.** Customers raise tickets (a bug, a billing question, a feature request). Support agents assign them, reply to the customer or leave internal notes, and move each ticket through `OPEN → IN_PROGRESS → RESOLVED → CLOSED`. A dashboard shows the live queue: open, in progress, urgent, unassigned and resolved, plus where requests come from.
 
@@ -14,7 +14,7 @@ The app is deliberately small. The project is the delivery system around it. Eve
 
 | | |
 |---|---|
-| **Demo video (14 min)** | [`demo/HelpDesk-Presentation.mp4`](demo/HelpDesk-Presentation.mp4): narrated walkthrough of slides, codebase, CI/CD, Terraform, Argo CD, Kubernetes, Prometheus and Grafana. If GitHub can't preview it, use *View raw* to download it |
+| **Demo video (14 min)** | **[Watch on Google Drive](https://drive.google.com/file/d/1XKZFxCKt3bHWjRsZ8xwDCqDI7-ifr4Tv/view?usp=sharing)**: narrated walkthrough of slides, codebase, CI/CD, Terraform, Argo CD, Kubernetes, Prometheus and Grafana (a copy is in [`demo/HelpDesk-Presentation.mp4`](demo/HelpDesk-Presentation.mp4)) |
 | **Slide deck (15 slides)** | [`demo/HelpDesk-Presentation.pdf`](demo/HelpDesk-Presentation.pdf) · [`.pptx`](demo/HelpDesk-Presentation.pptx) |
 | Every rubric item and its proof | [`evidence/README.md`](evidence/README.md): 40 screenshots plus raw command output |
 | A green pipeline run | [Run #9](https://github.com/princekumar0509/Helpdesk/actions/runs/38956576525): test → build + Trivy + push → GitOps commit → rollout verified on EKS |
