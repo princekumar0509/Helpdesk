@@ -1,341 +1,333 @@
-# HelpDesk — Customer Support Ticketing (Session 21 DevOps Capstone)
+# HelpDesk
 
-HelpDesk is a small SaaS-style support desk. Customers' problems come in as **tickets**. Support agents triage them by category and priority, assign an owner, reply to the customer or leave internal notes, and move each ticket through `OPEN → IN_PROGRESS → RESOLVED → CLOSED`. A dashboard shows the live queue: open, in progress, urgent, unassigned and resolved, plus where requests come from.
+**Name:** Prince Kumar · **DevOps course, Session 21 final capstone**
 
-The application is deliberately small. The point of the project is the delivery pipeline around it: how a commit on a laptop becomes a scanned container image, running on AWS EKS, autoscaled and monitored.
+**▶ [Demo video (14 min)](demo/HelpDesk-Presentation.mp4)** · **[Slides (PDF)](demo/HelpDesk-Presentation.pdf)** · **[Slides (PPTX)](demo/HelpDesk-Presentation.pptx)**
 
-```text
- git push ──► GitHub Actions ──────────────────────────────────────────────────────────────┐
-              │ test:   ruff · pytest (19 tests) · frontend tests + build · helm lint       │
-              │ build:  docker build backend + frontend (tag = commit SHA)                  │
-              │ scan:   Trivy — fail on fixable HIGH/CRITICAL CVEs                          │
-              │ push:   ghcr.io/<user>/helpdesk-{backend,frontend}:<sha>                    │
-              │ gitops: commit the new tags to helm/helpdesk/values-image.yaml              │
-              │ verify: OIDC → AWS (no stored keys) → wait until EKS runs this commit       │
-              └─────────────────────────────────────────────────────────────────────────────┘
- ArgoCD (in EKS) ──► watches helm/helpdesk on main ──► syncs the helpdesk namespace (GitOps)
- Terraform ──► AWS VPC (2 public + 2 private subnets, NAT) ──► EKS + managed node group
-                                                             │
-     Internet ─► ingress-nginx (AWS NLB) ─► Ingress ──┬─ /     ─► frontend Service ─► React/Nginx pods (×2)
-                                                      └─ /api  ─► backend Service  ─► FastAPI pods (×2–6, HPA)
-                                                                                         │
-                                                                     PostgreSQL StatefulSet + EBS volume
-     Prometheus ◄── ServiceMonitor scrapes /metrics ──┘      Grafana ◄── "HelpDesk API" dashboard (auto-provisioned)
+**HelpDesk is a customer-support ticketing app.** Customers raise tickets (a bug, a billing question, a feature request). Support agents assign them, reply to the customer or leave internal notes, and move each ticket through `OPEN → IN_PROGRESS → RESOLVED → CLOSED`. A dashboard shows the live queue: open, in progress, urgent, unassigned and resolved, plus where requests come from.
+
+The app is deliberately small. The project is the delivery system around it. Every commit is linted, tested and security-scanned by GitHub Actions, built into images tagged with the commit SHA, and published to GitHub Container Registry. The pipeline then commits the new tag to Git, and Argo CD deploys it to AWS EKS. Prometheus and Grafana watch the app, and Terraform built the AWS network and cluster it runs on.
+
+![HelpDesk running on AWS EKS, opened through the Kubernetes Ingress and the AWS load balancer](evidence/eks-app-via-ingress.png)
+
+**Where to look**
+
+| | |
+|---|---|
+| **Demo video (14 min)** | [`demo/HelpDesk-Presentation.mp4`](demo/HelpDesk-Presentation.mp4): narrated walkthrough of slides, codebase, CI/CD, Terraform, Argo CD, Kubernetes, Prometheus and Grafana. If GitHub can't preview it, use *View raw* to download it |
+| **Slide deck (15 slides)** | [`demo/HelpDesk-Presentation.pdf`](demo/HelpDesk-Presentation.pdf) · [`.pptx`](demo/HelpDesk-Presentation.pptx) |
+| Every rubric item and its proof | [`evidence/README.md`](evidence/README.md): 40 screenshots plus raw command output |
+| A green pipeline run | [Run #9](https://github.com/princekumar0509/Helpdesk/actions/runs/38956576525): test → build + Trivy + push → GitOps commit → rollout verified on EKS |
+| Narration script | [`demo/SCRIPT.md`](demo/SCRIPT.md) |
+| Troubleshooting labs | [`troubleshooting/`](troubleshooting/) |
+| Terraform details | [`terraform/README.md`](terraform/README.md) |
+
+## Contents
+
+1. [Architecture](#1-architecture)
+2. [Technologies](#2-technologies)
+3. [Repository layout](#3-repository-layout)
+4. [Application and API](#4-application-and-api)
+5. [Docker](#5-docker)
+6. [CI/CD pipeline](#6-cicd-pipeline)
+7. [DevSecOps](#7-devsecops)
+8. [Terraform: AWS VPC + EKS](#8-terraform-aws-vpc--eks)
+9. [Kubernetes and Helm](#9-kubernetes-and-helm)
+10. [Monitoring](#10-monitoring)
+11. [GitOps with Argo CD and the live demo](#11-gitops-with-argo-cd-and-the-live-demo)
+12. [Troubleshooting](#12-troubleshooting)
+13. [Cost and teardown](#13-cost-and-teardown)
+14. [Known issues and limitations](#14-known-issues-and-limitations)
+15. [Lessons learned](#15-lessons-learned)
+
+## 1. Architecture
+
+```mermaid
+flowchart LR
+  dev([Developer]) -- git push --> repo[(GitHub<br/>Helpdesk)]
+  repo --> ci
+  subgraph ci [GitHub Actions pipeline]
+    direction TB
+    t[ruff · pytest · frontend build · helm lint] --> b[docker build x2]
+    b --> s[Trivy scan<br/>fail on HIGH/CRITICAL] --> push[push to GHCR<br/>tag = commit SHA]
+    push --> g[GitOps job:<br/>commit tag to values-image.yaml] --> v[verify job:<br/>OIDC, wait for rollout]
+  end
+  g -- commit --> repo
+  push --> ghcr[(GitHub Container<br/>Registry)]
+  argo[Argo CD] -- watches main --> repo
+  argo -- sync --> k8s
+  ghcr -. image pull .-> k8s
+  subgraph k8s [EKS · namespace helpdesk]
+    lb[AWS NLB + ingress-nginx] -- "/" --> fe[frontend<br/>React + nginx · 2 pods]
+    lb -- "/api" --> be[backend<br/>FastAPI · HPA 2-6]
+    be --> pg[(PostgreSQL<br/>StatefulSet + 5 Gi EBS)]
+  end
+  prom[Prometheus] -- scrapes /metrics --> be
+  graf[Grafana] --> prom
+  tf[Terraform] --> aws[(AWS ap-south-1<br/>VPC · 2 public + 2 private subnets<br/>NAT · EKS 1.34 · node group)]
 ```
 
-| Layer | Technology |
+**A request:** the browser reaches the AWS load balancer and the Ingress. `/` goes to the frontend (nginx serving the React build), and `/api` goes to the backend (FastAPI), which talks to PostgreSQL. Prometheus scrapes the backend's `/metrics` inside the cluster.
+
+**A change:** a commit to `main` runs the pipeline. The images are pushed only if every test and scan passes, and then the new tag is committed to [`helm/helpdesk/values-image.yaml`](helm/helpdesk/values-image.yaml). Argo CD sees that commit and rolls it out. **CI never pushes to the cluster, and no AWS keys are stored in GitHub.** The verify job signs in through OIDC only to confirm the rollout. Rolling back is `git revert`.
+
+## 2. Technologies
+
+| Area | Tools |
 |---|---|
-| Frontend | React 19 + Vite, responsive CSS (light/dark), served by unprivileged Nginx |
-| Backend | FastAPI, SQLAlchemy 2, Pydantic v2, Alembic migrations |
-| Database | PostgreSQL 16 |
-| Tests | pytest (isolated in-memory SQLite per test), ruff lint, Node test runner |
+| Frontend | React 19, Vite, responsive CSS (light and dark), served by unprivileged nginx |
+| Backend | Python 3.12, FastAPI, SQLAlchemy 2, Pydantic 2, Alembic migrations |
+| Database | PostgreSQL 16 (StatefulSet + EBS volume on EKS; in-memory SQLite in tests) |
+| Tests | pytest (19 tests), ruff, Node test runner |
 | Containers | Docker multi-stage builds, non-root users, Docker Compose |
-| CI/CD | GitHub Actions → Trivy → GHCR → GitOps commit of the image tags |
-| GitOps | Argo CD v3.5 syncs the Helm chart from Git to EKS (auto-sync, prune, self-heal) |
-| Infrastructure | Terraform: VPC + EKS (+ EBS CSI, metrics-server, GitHub OIDC role) |
-| Kubernetes | Helm chart: Deployments, Services, StatefulSet, Ingress, HPA, ServiceMonitor |
-| Observability | kube-prometheus-stack (Prometheus, Grafana, Alertmanager) |
+| CI/CD | GitHub Actions, GitHub Container Registry, GitHub OIDC to AWS |
+| Security | Trivy image scans (fail on fixable HIGH/CRITICAL), non-root images, dropped capabilities, Pod Security labels |
+| Infrastructure | Terraform: AWS VPC, EKS 1.34, managed node group, IAM, EBS CSI, metrics-server |
+| Kubernetes | Helm chart, ingress-nginx (AWS NLB), HPA |
+| Observability | kube-prometheus-stack (Prometheus, Alertmanager, Grafana), prometheus-fastapi-instrumentator |
+| GitOps | Argo CD 3.5 (auto-sync, prune, self-heal) |
 
----
+## 3. Repository layout
 
-## Repository layout
+| Path | What it is |
+|---|---|
+| [`backend/`](backend/) | FastAPI app: `app/` (routes, models, schemas, DB), `alembic/versions/` migration, `tests/` (19 tests), `Dockerfile` |
+| [`frontend/`](frontend/) | React + Vite UI, `nginx.conf.template`, multi-stage `Dockerfile` |
+| [`docker-compose.yml`](docker-compose.yml) | the whole stack locally: PostgreSQL, backend, frontend |
+| [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) | the CI/CD pipeline (4 jobs) |
+| [`terraform/`](terraform/) | AWS VPC + EKS + IAM, and the GitHub OIDC deploy role |
+| [`k8s/`](k8s/) | `namespace.yaml` and the RBAC that lets CI manage the ServiceMonitor |
+| [`helm/helpdesk/`](helm/helpdesk/) | the Helm chart, plus `values-prod.yaml` (EKS), `values-dev.yaml` (local) and `values-image.yaml` (tags set by CI) |
+| [`argocd/`](argocd/) | Argo CD install values and the HelpDesk `Application` |
+| [`monitoring/`](monitoring/) | kube-prometheus-stack values and alert rules |
+| [`troubleshooting/`](troubleshooting/) | three deliberately broken manifests with investigation and fix steps |
+| [`scripts/`](scripts/) | `seed-data.sh` (demo tickets), `load-test.sh` (traffic for Grafana and the HPA) |
+| [`evidence/`](evidence/) | screenshots and raw command output for every module |
+| [`demo/`](demo/) | presentation video, slides, narration script |
+
+## 4. Application and API
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/tickets?status=&priority=&category=&q=` | list, filter and search tickets, newest first |
+| `POST /api/tickets` | create a ticket (always starts `OPEN`) |
+| `GET` / `PUT` / `DELETE /api/tickets/{id}` | read, update (status, priority, agent…), delete |
+| `GET` / `POST /api/tickets/{id}/comments` | conversation thread; a reply from the assigned agent moves `OPEN → IN_PROGRESS` |
+| `GET /api/tickets/stats` | counts by status and category, urgent-active and unassigned |
+| `GET /health`, `/ready`, `/metrics` | liveness, readiness (database reachable), Prometheus metrics |
+
+Interactive docs are at `/docs` (Swagger UI). The schema (`tickets`, `ticket_comments`) is created by the Alembic migration [`0001_create_tickets.py`](backend/alembic/versions/0001_create_tickets.py).
+
+Run the tests (no database needed; each test gets a fresh in-memory SQLite database through [`conftest.py`](backend/tests/conftest.py)):
+
+```bash
+cd backend && python3 -m venv .venv && . .venv/bin/activate
+pip install -r requirements-dev.txt
+ruff check . && pytest -v
+```
+
+![pytest -v: 19 tests passed on an isolated test database](evidence/m2-pytest-passing.png)
+
+## 5. Docker
+
+- **Backend** ([`backend/Dockerfile`](backend/Dockerfile)): two stages. Dependencies are installed into a virtualenv in a build stage. The runtime is `python:3.12-slim` running as **uid 10001**, with `pip` removed.
+- **Frontend** ([`frontend/Dockerfile`](frontend/Dockerfile)): **multi-stage**. Node 22 builds the static files, and the runtime is `nginx-unprivileged` running as **uid 101**, with no Node at all.
+- **Compose** ([`docker-compose.yml`](docker-compose.yml)): PostgreSQL with a health check. The backend waits for the database and runs the migration; the frontend waits for the backend.
+
+```bash
+docker compose up --build        # UI: http://localhost:3000   API docs: http://localhost:8000/docs
+./scripts/seed-data.sh           # optional: demo tickets
+```
+
+Postgres is published on `127.0.0.1:5433`, so it doesn't clash with a local Postgres. Stop with `docker compose down`; add `-v` to delete the data too.
+
+![docker compose up --build: three services healthy; both containers run as non-root users](evidence/m4-docker-compose.png)
+
+## 6. CI/CD pipeline
+
+[`ci-cd.yml`](.github/workflows/ci-cd.yml) runs on every push and pull request to `main`, and can also be started by hand.
 
 ```text
-Helpdesk/
-├── .github/workflows/ci-cd.yml   CI/CD pipeline: test → build + Trivy + push → GitOps commit → verify
-├── argocd/                  Argo CD install values + the HelpDesk Application (GitOps)
-├── backend/                 FastAPI app
-│   ├── app/                 main.py (health/ready/metrics), routes.py (ticket API), models, schemas, db, config
-│   ├── alembic/versions/    0001_create_tickets.py — tickets + ticket_comments tables
-│   ├── tests/               conftest.py (isolated test DB) + 19 tests
-│   ├── Dockerfile           multi-stage python:3.12-slim (venv, no pip at runtime), non-root uid 10001
-│   └── requirements*.txt    runtime vs dev dependencies (pinned)
-├── frontend/                React app (src/components/*), nginx.conf.template, multi-stage Dockerfile
-├── docker-compose.yml       postgres + backend + frontend
-├── terraform/               AWS VPC + EKS + IAM (see terraform/README.md)
-├── helm/helpdesk/           Helm chart (+ values-dev.yaml for local clusters, values-prod.yaml for EKS)
-├── k8s/                     namespace + optional GHCR pull-secret helper
-├── monitoring/              kube-prometheus-stack values (Prometheus, Grafana, alert rules)
-├── troubleshooting/         3 deliberately broken manifests with investigation + fix steps
-├── scripts/                 seed-data.sh (demo data), load-test.sh (traffic for Grafana/HPA)
-├── evidence/                grading screenshots and raw command output for every module
-└── demo/                    presentation deck (PPTX + PDF), narration script and video
+test ──► build-scan-push ──────────────────────► gitops ──────────────────────► verify
+│        docker build x2 (tag = commit SHA)      commit the new tag to            OIDC to AWS, wait until
+│        Trivy: fail on fixable HIGH/CRITICAL    helm/helpdesk/values-image.yaml  both Deployments on EKS
+│        push both images to GHCR                ([skip ci]); Argo CD syncs it    run this commit
+ruff · pytest (19) · npm test + build · helm lint
 ```
 
----
+- **Tests come first.** If any test fails, nothing is built, scanned or pushed.
+- **Tags are the full commit SHA,** never `latest`, so every running pod traces back to one commit.
+- **The GitOps commit is the deployment.** It is made with the workflow's own token, so it doesn't start another run.
+- **No stored cloud credentials.** The verify job gets short-lived AWS credentials through GitHub OIDC. The role trusts only this repository's `production` environment, and inside EKS it is limited to the `helpdesk` namespace.
 
-## API
+One-time setup: after `terraform apply`, set the repository variables `AWS_DEPLOY_ROLE_ARN` and `EKS_CLUSTER_NAME` (from `terraform output`), and give this repository *Write* access to the two GHCR packages.
 
-Interactive docs: `http://localhost:8000/docs` (Swagger UI).
+![a green run in this repository: all 4 jobs passed](evidence/helpdesk-pipeline-green.png)
+![GHCR package page: every version is tagged with its commit SHA](evidence/eks-ghcr-helpdesk-backend.png)
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/health` | Liveness: process is up |
-| GET | `/ready` | Readiness: database reachable (`SELECT 1`) |
-| GET | `/metrics` | Prometheus metrics (request count, latency histograms) |
-| GET | `/api/tickets?status=&priority=&category=&q=` | List and filter tickets, newest first |
-| GET | `/api/tickets/stats` | Counts by status and category, urgent-active and unassigned counts |
-| GET | `/api/tickets/{id}` | One ticket |
-| POST | `/api/tickets` | Create a ticket (always starts `OPEN`) |
-| PUT | `/api/tickets/{id}` | Update status, priority, category, agent… (sets or clears `resolved_at`) |
-| DELETE | `/api/tickets/{id}` | Delete a ticket and its comments |
-| GET | `/api/tickets/{id}/comments` | Conversation thread |
-| POST | `/api/tickets/{id}/comments` | Reply or internal note (an agent's public reply moves `OPEN → IN_PROGRESS`) |
+## 7. DevSecOps
 
-```bash
-curl -X POST localhost:8000/api/tickets -H 'Content-Type: application/json' \
-  -d '{"subject":"Checkout returns 500","category":"BUG","priority":"URGENT",
-       "requester_name":"Meera","requester_email":"meera@example.com"}'
-```
-
----
-
-## 1. Run locally with Docker Compose
-
-```bash
-cd Helpdesk
-docker compose up --build        # first build takes a few minutes
-./scripts/seed-data.sh           # optional: load demo tickets
-```
-
-| URL | What |
+| Control | How |
 |---|---|
-| http://localhost:3000 | HelpDesk UI (Nginx proxies `/api` to the backend) |
-| http://localhost:8000/docs | Swagger UI |
-| http://localhost:8000/metrics | Prometheus metrics |
+| Image scan | Trivy on both images in the pipeline: `HIGH,CRITICAL`, `ignore-unfixed`, `exit-code 1`, so a fixable high-severity CVE fails the build |
+| Small attack surface | slim and Alpine base images, OS packages upgraded at build time, `pip` removed from the backend runtime |
+| Runtime | non-root containers, all Linux capabilities dropped, seccomp `RuntimeDefault`, Pod Security labels on the namespace |
+| Secrets | no keys in the repository: OIDC for AWS, the database password in a Kubernetes Secret, `.env` and `*.tfvars` git-ignored |
 
-Postgres is published on `127.0.0.1:5433` (5433, so it doesn't clash with a locally installed Postgres). To show the table:
+**What Trivy found:** both published images have **0 fixable HIGH or CRITICAL** vulnerabilities (the Debian 13 backend with 29 Python packages, and the Alpine frontend). That's deliberate. An early scan flagged HIGH CVEs in libraries bundled inside `pip` (`urllib3`, `msgpack`, `setuptools`), code the app never runs, so the multi-stage build drops `pip` from the runtime image instead of ignoring the findings. A clean scan doesn't mean "secure". It means no known, fixable, high-severity CVE was present at build time.
 
-```bash
-docker compose exec postgres psql -U helpdesk -d helpdesk -c "select id, subject, status, priority from tickets;"
-```
+![Trivy in the GitHub Actions logs of run #9: 0 vulnerabilities in both images](evidence/m6-trivy-pipeline-run.png)
 
-Stop with `docker compose down`. Add `-v` to also delete the database volume.
+## 8. Terraform: AWS VPC + EKS
 
-## 2. Run the backend without Docker
+[`terraform/`](terraform/) plans **65 resources** in `ap-south-1` (Mumbai):
 
-```bash
-cd backend
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt
-export DATABASE_URL='postgresql+psycopg://helpdesk:helpdesk@localhost:5433/helpdesk'   # e.g. the Compose Postgres
-alembic upgrade head
-uvicorn app.main:app --reload --port 8000
+- a **VPC** (`10.20.0.0/16`) with **2 public subnets** (load balancers) and 2 private subnets (nodes) across two availability zones;
+- an internet gateway, one NAT gateway and route tables;
+- an **EKS 1.34** cluster with a managed **node group** of 2× `m7i-flex.large`;
+- add-ons: the EBS CSI driver (for the Postgres volume, via EKS Pod Identity) and metrics-server (for the HPA);
+- the IAM role GitHub Actions assumes through OIDC.
 
-# frontend, in another terminal (proxies /api to :8000)
-cd frontend && npm install && npm run dev      # http://localhost:5173
-```
+Choices made along the way:
 
-## 3. Tests
-
-```bash
-cd backend && pytest -v          # 19 tests, each on a fresh in-memory SQLite DB (never touches Postgres)
-ruff check . && ruff format --check .
-cd ../frontend && npm test       # helper/unit tests
-```
-
-The tests cover health, readiness and metrics, create and validation, list, filter and search, get/404, update and the `resolved_at` logic, delete, stats, comments, and the agent-reply status transition. `tests/conftest.py` overrides FastAPI's `get_db` dependency, so each test gets its own empty database.
-
-Tests run **before** any image is built in CI. If they fail, the pipeline stops and no broken image reaches the registry.
-
----
-
-## 4. CI/CD (GitHub Actions)
-
-The workflow is [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml). It runs on every push or pull request to `main`, and can also be started by hand (*Run workflow*).
-
-| Job | What happens |
-|---|---|
-| **test** | ruff → pytest → `npm ci && npm test && npm run build` → `helm lint` |
-| **build-scan-push** | Builds both images tagged with `github.sha`, scans each with **Trivy** (`HIGH,CRITICAL`, `ignore-unfixed`, `exit-code: 1`), then pushes to **GHCR** (on pushes only, not PRs) |
-| **gitops** | Writes the new SHA into `helm/helpdesk/values-image.yaml` and commits it to `main` (`chore(gitops): deploy <sha> [skip ci]`). This commit *is* the deployment: Argo CD sees it and syncs |
-| **verify** | Assumes an AWS role through **GitHub OIDC**, waits until both Deployments on EKS run the new SHA, and checks the rollout |
-
-The image tag is the commit SHA, so every running pod traces back to one exact commit (`kubectl get deploy helpdesk-backend -n helpdesk -o wide`).
-
-**One-time setup:**
-1. After `terraform apply` (with `github_repository` set), add two repository **variables** under *Settings → Secrets and variables → Actions → Variables*:
-   - `AWS_DEPLOY_ROLE_ARN` = `terraform output -raw github_deploy_role_arn`
-   - `EKS_CLUSTER_NAME` = `terraform output -raw cluster_name`
-
-   Until these exist, the verify job is skipped; test, build, scan, push and the GitOps commit still run.
-2. After the first push, open *GitHub → your profile → Packages → helpdesk-backend / helpdesk-frontend → Package settings* and set the visibility to **Public**, so EKS can pull without credentials. If you'd rather keep them private, see `k8s/ghcr-pull-secret.example.sh`.
-
-No AWS keys are stored in GitHub, and the pipeline never pushes to the cluster: Argo CD pulls from Git. The OIDC role can only be assumed by this repository's `production` environment, and inside EKS it is limited to the `helpdesk` namespace.
-
-## 5. Security scanning (Trivy)
-
-Trivy scans each image's OS packages (Debian for the backend, Alpine for the frontend) and language dependencies (Python wheels; the frontend runtime image contains only static files and Nginx) for known CVEs and leaked secrets. The pipeline fails on any **HIGH or CRITICAL** vulnerability that already has a fixed version. Both Dockerfiles apply OS patches (`apt-get upgrade` / `apk upgrade`), and the Python dependencies are pinned to current releases. The backend image also removes `pip` after installing dependencies. A first scan flagged HIGH CVEs in libraries vendored inside pip (`urllib3`, `msgpack`, `setuptools`), code the running app never uses, so the multi-stage build drops pip from the runtime image instead of ignoring the findings. A clean scan doesn't mean "secure". It means no known, fixable, high-severity CVE was in the image at build time. It complements, rather than replaces, code review, dependency updates, secret scanning and runtime controls (non-root users, dropped Linux capabilities, Pod Security Standards).
-
----
-
-## 6. AWS infrastructure (Terraform)
-
-See [terraform/README.md](terraform/README.md) for details. In short:
+- **`m7i-flex.large` nodes.** The AWS Free plan only launches free-tier instance types, and `t3.medium` was rejected. `m7i-flex.large` is eligible and has 8 GiB of memory.
+- **No credentials in the repository.** Terraform ran as an IAM user whose key exists only in the local AWS CLI configuration. `terraform.tfvars` and the state are git-ignored; only [`terraform.tfvars.example`](terraform/terraform.tfvars.example) is committed.
+- **No AWS calls during `plan`.** Availability zones are variables and the node AMI is EKS-managed, so a plan works even before EC2 is enabled on an account.
 
 ```bash
 cd terraform
-cp terraform.tfvars.example terraform.tfvars      # set github_repository; never put AWS keys here
-terraform init && terraform plan && terraform apply          # ~15–20 min
-$(terraform output -raw configure_kubectl)                    # point kubectl at the cluster
+cp terraform.tfvars.example terraform.tfvars     # set github_repository; never put AWS keys here
+terraform init && terraform plan -out=tfplan && terraform apply tfplan    # ~15–20 min
+$(terraform output -raw configure_kubectl)
 ```
 
-This creates a VPC in `ap-south-1` with 2 public and 2 private subnets across 2 AZs and one NAT gateway. It also creates an EKS cluster with a managed node group (2× m7i-flex.large), the EBS CSI driver (for the Postgres volume), metrics-server (for the HPA), and the GitHub OIDC deploy role.
+![terraform plan: 65 resources to add](evidence/m7-terraform-plan.png)
+![AWS Console: helpdesk-dev-vpc and its resource map](evidence/eks-aws-console-vpc.png)
+![AWS Console: the four subnets, two of them public](evidence/eks-aws-console-subnets.png)
+![AWS Console: EKS cluster helpdesk-dev-eks, Active, Kubernetes 1.34](evidence/eks-aws-console-cluster.png)
+![AWS Console: the node group, Active, desired size 2](evidence/eks-aws-console-nodegroup.png)
 
-> **Cost:** EKS control plane, NAT gateway, 2 EC2 nodes and a load balancer cost several USD per day. Run `terraform destroy` after grading (uninstall the Helm releases first so the load balancer is removed, see below).
+## 9. Kubernetes and Helm
 
-## 7. Deploy to Kubernetes
+The [`helm/helpdesk`](helm/helpdesk/) chart deploys:
 
-One-time cluster bootstrap (after `terraform apply`):
+- the backend: 2–6 replicas through the HPA (60 % CPU), startup, readiness and liveness probes, and an init container that waits for Postgres;
+- the frontend: 2 replicas;
+- PostgreSQL as a StatefulSet with a 5 Gi EBS volume;
+- ClusterIP Services, and an Ingress (`/` → frontend, `/api` → backend);
+- a ServiceMonitor and the "HelpDesk API" Grafana dashboard.
+
+One-time cluster bootstrap after `terraform apply`:
 
 ```bash
 kubectl apply -f k8s/namespace.yaml
-
-# EKS ≥ 1.30 ships gp2 without the default flag; the Postgres PVC needs a default StorageClass
-kubectl annotate storageclass gp2 storageclass.kubernetes.io/is-default-class=true --overwrite
-
-# Ingress controller → creates an AWS load balancer
+kubectl annotate storageclass gp2 storageclass.kubernetes.io/is-default-class=true --overwrite   # EKS ≥ 1.30 has no default
 helm upgrade --install ingress-nginx ingress-nginx --repo https://kubernetes.github.io/ingress-nginx \
   -n ingress-nginx --create-namespace \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb
-
-# Prometheus + Grafana (install before the app so the ServiceMonitor CRD exists)
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
   -n monitoring --create-namespace -f monitoring/kube-prometheus-stack-values.yaml
 ```
 
-Deploy the app with **Argo CD (GitOps)**. This is a one-time setup; after it, every push to `main` deploys itself:
+The app itself is deployed by Argo CD (see [section 11](#11-gitops-with-argo-cd-and-the-live-demo)). Without Argo CD, for example on a local kind cluster, the equivalent is:
+
+```bash
+helm upgrade --install helpdesk ./helm/helpdesk -n helpdesk -f helm/helpdesk/values-prod.yaml -f helm/helpdesk/values-image.yaml
+```
+
+![on EKS: all pods Running, ClusterIP Services, the Ingress on the AWS load balancer](evidence/eks-kubectl-pods-svc.png)
+![helm list on EKS, and the Argo CD application Synced and Healthy](evidence/eks-helm-list.png)
+
+**Autoscaling:** under `scripts/load-test.sh`, backend CPU rises above the 60 % target and the HPA scales from 2 to 6 pods, then back to 2 when the load stops. The scaling on EKS is shown in the demo video.
+
+```bash
+kubectl get hpa -n helpdesk -w
+URL=http://<ingress-address> CONCURRENCY=60 REQUESTS=400000 ./scripts/load-test.sh
+```
+
+## 10. Monitoring
+
+kube-prometheus-stack is installed with [these values](monitoring/kube-prometheus-stack-values.yaml). The chart adds a **ServiceMonitor**, so Prometheus scrapes the backend's `/metrics`, and the **"HelpDesk API" dashboard**: request rate, 5xx ratio, p95 latency, backend pods up, requests per endpoint, responses by status class, p50/p95/p99 latency, and CPU per pod (what the HPA acts on). Two alert rules are defined: `HelpDeskHighErrorRate` and `HelpDeskBackendDown`.
+
+```bash
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090:9090   # Status → Targets
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3001:80          # Dashboards → HelpDesk API
+```
+
+![Prometheus targets on EKS: both backend pods UP](evidence/eks-prometheus-targets.png)
+![Grafana on EKS: live request rate, 0 % errors, p95 latency, pods up and CPU per pod](evidence/eks-grafana-dashboard.png)
+
+## 11. GitOps with Argo CD and the live demo
+
+Argo CD runs in the cluster and keeps the `helpdesk` namespace equal to [`helm/helpdesk`](helm/helpdesk/) on `main` ([Application](argocd/helpdesk-application.yaml): automated sync, prune and self-heal; the HPA owns the backend replica count).
 
 ```bash
 helm repo add argo https://argoproj.github.io/argo-helm
 helm upgrade --install argocd argo/argo-cd --version 10.10.3 -n argocd --create-namespace -f argocd/argocd-values.yaml
 kubectl apply -f argocd/helpdesk-application.yaml
-
-kubectl get application helpdesk -n argocd                  # SYNC STATUS = Synced, HEALTH STATUS = Healthy
-kubectl port-forward -n argocd svc/argocd-server 8080:80    # UI at http://localhost:8080, user admin
-kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}' | base64 -d
+kubectl get application helpdesk -n argocd      # Synced, Healthy
 ```
 
-The GitOps flow: **commit → CI tests, scans and pushes the images → CI commits the new tags to `helm/helpdesk/values-image.yaml` → Argo CD detects the commit (polls every 60 s) and syncs → the verify job confirms EKS runs the new SHA.** Rolling back is `git revert` of the `chore(gitops)` commit. With `selfHeal` on, a manual `kubectl edit` is reverted to what Git says.
+**The live demo, recorded in the video:**
 
-Without Argo CD (for example on a local kind cluster), the manual equivalent is:
+1. The sidebar subtitle is changed in `Sidebar.jsx`, committed and pushed.
+2. The pipeline runs: tests → build → Trivy → GHCR → GitOps commit.
+3. Argo CD syncs the new tag, and a browser refresh shows "Customer support · v2 live demo".
+4. **Self-heal:** the frontend is scaled to 4 by hand, and Argo CD puts it back to 2, as Git says, in about 20 seconds.
 
-```bash
-helm upgrade --install helpdesk ./helm/helpdesk -n helpdesk -f helm/helpdesk/values-prod.yaml \
-  --set backend.image.repository=ghcr.io/<github-user>/helpdesk-backend  --set backend.image.tag=<sha> \
-  --set frontend.image.repository=ghcr.io/<github-user>/helpdesk-frontend --set frontend.image.tag=<sha>
+![Argo CD: the helpdesk application Synced to main and Healthy, with the resources it manages](evidence/eks-argocd-app.png)
 
-kubectl get pods,svc,ingress,hpa -n helpdesk
-helm list -n helpdesk
-kubectl get ingress helpdesk -n helpdesk     # ADDRESS = load balancer hostname → open http://<ADDRESS>
-```
+## 12. Troubleshooting
 
-What the chart creates:
-
-| Resource | Notes |
-|---|---|
-| `helpdesk-backend` Deployment | 2 replicas (HPA scales 2–6 on 60% CPU), startup/readiness/liveness probes, init container waits for Postgres, runs as non-root with all capabilities dropped |
-| `helpdesk-frontend` Deployment | 2 replicas, Nginx on 8080 as uid 101 |
-| `helpdesk-backend` / `helpdesk-frontend` Services | ClusterIP |
-| `helpdesk-postgres` StatefulSet + Service + Secret | 5 Gi PVC; the password is generated on first install and kept across upgrades |
-| `helpdesk` Ingress | `/api` → backend, `/` → frontend |
-| HPA, ServiceMonitor, Grafana dashboard ConfigMap | Enabled in `values-prod.yaml` |
-
-Rollback: `helm history helpdesk -n helpdesk` then `helm rollback helpdesk <revision> -n helpdesk`.
-
-**Local cluster instead of EKS** (kind/minikube with ingress-nginx): build the images, load them into the cluster (`kind load docker-image helpdesk-backend:local helpdesk-frontend:local`), then run `helm upgrade --install helpdesk ./helm/helpdesk -n helpdesk -f helm/helpdesk/values-dev.yaml`. Add `127.0.0.1 helpdesk.local` to `/etc/hosts`.
-
-## 8. Autoscaling demo (HPA)
-
-```bash
-kubectl get hpa -n helpdesk -w                                     # terminal 1
-URL=http://<ingress-address> CONCURRENCY=40 REQUESTS=40000 ./scripts/load-test.sh   # terminal 2
-```
-
-Backend CPU climbs above the 60% target and the HPA adds pods, up to 6. When the load stops, it scales back to 2 after the stabilization window.
-
-## 9. Monitoring (Prometheus + Grafana)
-
-```bash
-kubectl port-forward -n monitoring svc/kube-prometheus-stack-prometheus 9090:9090   # Status → Targets: helpdesk-backend UP
-kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3001:80          # admin / helpdesk-admin (change it!)
-```
-
-In Grafana, open **Dashboards → HelpDesk API**. It is provisioned automatically from `helm/helpdesk/dashboards/helpdesk-api.json` and shows request rate, 5xx ratio, p95 latency, backend pods up, requests per endpoint, responses by status class, p50/p95/p99 latency, and per-pod CPU (what the HPA acts on). Run `scripts/load-test.sh` to fill the graphs. Two alert rules (`HelpDeskHighErrorRate`, `HelpDeskBackendDown`) are defined in `monitoring/kube-prometheus-stack-values.yaml`.
-
-## 10. Troubleshooting labs
-
-Each file in `troubleshooting/` has the symptoms, the commands to investigate, and the fix in its header comment.
+Each manifest in [`troubleshooting/`](troubleshooting/) has the symptoms, the commands to investigate and the fix in its header. The broken-image lab is run live on EKS in the demo video: `ImagePullBackOff` → `kubectl describe` shows the tag doesn't exist → fix the image → `Running` → clean up.
 
 | Lab | Symptom | Lesson |
 |---|---|---|
-| `broken-image.yaml` | `ImagePullBackOff` | `kubectl describe pod` → Events show that the tag doesn't exist |
-| `broken-service.yaml` | Service has no endpoints | A Service finds pods only through label selectors, and `targetPort` must match the container port |
-| `crashloop-bad-db.yaml` | `CrashLoopBackOff` | The image is fine but the config is wrong. `kubectl logs --previous` shows the DB connection error |
+| `broken-image.yaml` | `ImagePullBackOff` | `kubectl describe pod`: the Events show the tag doesn't exist |
+| `broken-service.yaml` | the Service has no endpoints | a Service finds pods only through label selectors, and `targetPort` must match the container port |
+| `crashloop-bad-db.yaml` | `CrashLoopBackOff` | the image is fine but the config is wrong: `kubectl logs --previous` shows the database error |
 
-## 11. Tear down
+![troubleshooting labs: broken, investigated and fixed](evidence/m10-troubleshooting-labs.png)
+
+## 13. Cost and teardown
+
+| What | Cost |
+|---|---|
+| GitHub repository, Actions, GHCR | free (public repository) |
+| AWS: EKS control plane, NAT gateway, 2 nodes, load balancer | about $7 per day while running, paid from the AWS Free plan credits |
+
+Tear down in this order. Kubernetes created the load balancer and the EBS volume, so `terraform destroy` alone would leave them behind:
 
 ```bash
-helm uninstall helpdesk -n helpdesk
+kubectl delete -f argocd/helpdesk-application.yaml     # Argo CD removes the app
+helm uninstall argocd -n argocd
 helm uninstall ingress-nginx -n ingress-nginx          # deletes the AWS load balancer
 helm uninstall kube-prometheus-stack -n monitoring
 kubectl delete pvc --all -n helpdesk                   # deletes the EBS volume
 cd terraform && terraform destroy
 ```
 
----
+## 14. Known issues and limitations
 
-## Presentation (`demo/`)
+- **PostgreSQL runs in the cluster** as one replica: no replication, automated backups or point-in-time recovery. Production would use Amazon RDS.
+- **One NAT gateway** keeps costs down, but it's a single point of failure for outbound traffic. Production would use one per AZ.
+- **The Free plan caps the cluster at 2 nodes** (5-vCPU quota) and there's no Cluster Autoscaler, so the HPA scales pods but not nodes.
+- **No TLS and no custom domain.** The app is plain HTTP on the load balancer's hostname. Production would add DNS, ACM or cert-manager, and HTTPS.
+- **The app has no login.** Anyone with the URL can create or change tickets.
+- **Terraform state is local.** An S3 backend is prepared but commented out in `terraform/versions.tf`.
+- **Trivy uses `ignore-unfixed`.** CVEs with no fix available are reported but don't block the pipeline.
+- **ingress-nginx is retired upstream.** It's kept because the course uses it. A newer setup would use the AWS Load Balancer Controller or Gateway API.
+- **Argo CD polls Git every 60 seconds** (no webhook), so a deploy starts up to a minute after the GitOps commit.
+- **The database Secret isn't managed by Argo CD.** Argo CD renders charts without cluster access and couldn't reuse a generated password, so the chart references the existing Secret through `postgres.existingSecret`. A fresh cluster would use Sealed Secrets or External Secrets.
+- **Some screenshots in `evidence/`** were taken while the project lived in the `session21-python/` folder of `princekumar0509/devops-heros`. The full commit history was carried over to this repository.
 
-| File | What it is |
-|---|---|
-| [`demo/HelpDesk-Presentation.pptx`](demo/HelpDesk-Presentation.pptx), [`.pdf`](demo/HelpDesk-Presentation.pdf) | 14-slide deck: overview, architecture, modules, CI/CD, Terraform, Kubernetes, observability, lessons learned |
-| [`demo/HelpDesk-Presentation.mp4`](demo/HelpDesk-Presentation.mp4) | 14-minute narrated walkthrough: slides and architecture, codebase, the live app, the PostgreSQL data, tests, Docker, a live commit through the pipeline, Trivy + GHCR, Terraform + AWS Console, Argo CD (GitOps, self-heal), Kubernetes, HPA, Prometheus, Grafana, a live troubleshooting lab |
-| [`demo/SCRIPT.md`](demo/SCRIPT.md) | Narration script, part by part |
-| [`demo/make_video.py`](demo/make_video.py) | Assembles the video from the screen recordings and the narration |
+## 15. Lessons learned
 
-## Known issues and limitations
-
-- **PostgreSQL runs inside the cluster** (one StatefulSet replica on a 5 GiB EBS volume). It's fine for a demo, but it has no replication, automated backups or point-in-time recovery. Production would use Amazon RDS.
-- **One NAT gateway** for both private subnets keeps costs down, but it's a single point of failure for outbound traffic if its availability zone fails. Production would use one NAT gateway per AZ.
-- **The AWS Free plan constrains the cluster.** EC2 only allows free-tier instance types, so nodes are `m7i-flex.large`, and the account's 5-vCPU quota caps the cluster at 2 nodes. There's no Cluster Autoscaler, so the HPA scales pods (2–6) but not nodes.
-- **No TLS and no custom domain.** The app is served over plain HTTP on the AWS load balancer's hostname. Production would add a DNS name, ACM or cert-manager, and HTTPS on the Ingress.
-- **The app has no login.** Anyone with the URL can create or change tickets, and agent names are free text.
-- **Terraform state is local.** An S3 backend is prepared but commented out in `terraform/versions.tf`. A team would enable it, with state locking.
-- **Trivy runs with `ignore-unfixed`.** The build fails only on HIGH or CRITICAL CVEs that already have a fix. Vulnerabilities with no available fix are reported but don't block the pipeline.
-- **The ingress-nginx project is retired upstream.** It's kept because the course uses it. A newer setup would use the AWS Load Balancer Controller or Gateway API.
-- **Argo CD polls Git every 60 seconds** (no webhook, because the Argo CD server isn't exposed to the internet), so a deploy starts up to a minute after the GitOps commit.
-- **The database Secret isn't managed by Argo CD.** It was created by the original Helm install, and the chart references it through `postgres.existingSecret`, because Argo CD renders charts without cluster access and couldn't reuse a generated password. A fresh cluster would create it once, or use Sealed Secrets or External Secrets.
-- **The screenshots in `evidence/`** were taken while the project lived in the `session21-python/` folder of `princekumar0509/devops-heros`. The full commit history was carried over to this repo.
-
----
-
-## Final demo script
-
-1. **App:** open the Ingress URL, create a ticket, open it, reply as the agent (it moves to *In progress*), resolve it.
-2. **API:** use `/docs` to create, read, update and delete a ticket.
-3. **DB:** `kubectl exec -n helpdesk helpdesk-postgres-0 -- psql -U helpdesk -d helpdesk -c "select id,subject,status from tickets"`
-4. **Git → CI → GitOps:** change something visible (e.g. the sidebar subtitle in `frontend/src/components/Sidebar.jsx`), commit, push, and watch the pipeline: tests → build → Trivy → GHCR → GitOps commit, then Argo CD syncing the new tag.
-5. **Registry:** GHCR package page showing the new `<sha>` tag.
-6. **Kubernetes:** `kubectl get pods,svc,ingress,hpa -n helpdesk`, `helm history helpdesk -n helpdesk`, and refresh the browser to show the change live.
-7. **Terraform:** walk through `terraform/main.tf` and show the VPC and EKS in the AWS console.
-8. **HPA + monitoring:** run the load test, watch the HPA scale, and show the Grafana panels and the Prometheus target `UP`.
-9. **Failure:** apply a troubleshooting lab and debug it live.
-
-## Grading evidence checklist (see GRADING.md)
-
-The screenshots for every module are in [`evidence/`](evidence/README.md), with an index of what each one shows.
-
-| Module | Where it is | Screenshot to capture |
-|---|---|---|
-| M1 App | `backend/app`, `backend/alembic/versions`, `frontend/`, `docker-compose.yml` | UI in browser |
-| M2 Tests | `backend/tests/`, `backend/pytest.ini` | `pytest -v` (19 passed) |
-| M3 Git | repo history, `.gitignore` | commit history (≥ 10 commits) |
-| M4 Docker | `backend/Dockerfile`, `frontend/Dockerfile` (multi-stage, both non-root) | `docker compose up --build`, http://localhost:3000 |
-| M5 CI/CD | `.github/workflows/ci-cd.yml` | green run, GHCR packages with SHA tags |
-| M6 Trivy | Trivy steps in the workflow | Trivy output in the run log |
-| M7 Terraform | `terraform/`, `terraform.tfvars.example` | `plan`, AWS console VPC + EKS, `destroy` |
-| M8 K8s + Helm | `k8s/`, `helm/helpdesk/` | `kubectl get pods/svc`, `helm list`, app via Ingress |
-| M9 Observability | `monitoring/`, ServiceMonitor + dashboard in chart | `curl /metrics`, Prometheus Targets, Grafana |
-| M10 Docs | this README | live demo |
+1. **Read the platform's error, not your code first.** EC2 calls failed with `OptInRequired`; the cause was an account verification that had failed, shown in AWS Health. A new, properly verified account fixed it.
+2. **Account plans have rules.** The Free plan rejected `t3.medium` and, at first, load balancers. CloudTrail showed the exact reason ("not eligible for Free Tier").
+3. **OIDC trust must match the token exactly.** The deploy role first trusted the branch, but a job with `environment:` sends the environment in `sub`. The repository also uses GitHub's immutable subject format, with numeric IDs.
+4. **Least privilege has edges.** EKS's namespace-admin access policy doesn't cover CRDs, so Helm couldn't manage the ServiceMonitor. A tiny RBAC Role fixed it without granting cluster admin.
+5. **Pin your tools.** `setup-helm` with `latest` once failed to look up the version, fell back to Helm 3, and broke a deploy that used a Helm 4 flag.
+6. **GitOps changes what a chart may do.** Argo CD renders without cluster access, so Helm `lookup()` can't reuse a generated password. A deterministic chart is a requirement.
+7. **Kubernetes creates cloud resources Terraform doesn't know about.** The load balancer and EBS volume must be removed first, or `terraform destroy` leaves them behind.
