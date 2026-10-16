@@ -64,6 +64,7 @@ PARTS = [
         beat("I can also add an internal note", clip("p03-app.webm", 43.5, 51.0)),
         beat("Finally I mark it as resolved", clip("p03-app.webm", 51.0, 61.0)),
         beat("The backend is REST API", clip("p03-app.webm", 61.0))]),
+    ("part03b", "The database", 25, True, [beat(None, clip("p03b-database.webm", 0.5))]),
     ("part04", "Testing", 47, False, [
         beat(None, slide(6)),
         beat("Ruff is a fast Python linter", clip("p04-tests.webm", 0.5))]),
@@ -92,6 +93,9 @@ PARTS = [
         beat("For monitoring", clip("p10b-monitoring.webm", 0.5, 7.5)),
         beat("finds it automatically", clip("p10b-monitoring.webm", 13.0, 18.0)),
         beat("Grafana shows", clip("p10b-monitoring.webm", 31.0))]),
+    ("part10b", "Troubleshooting", 45, True, [
+        beat(None, clip("p10c-troubleshooting.webm", 0.5, 27.0)),
+        beat("I fix it", clip("p10c-troubleshooting.webm", 27.0))]),
     ("part11", "Challenges", 63, False, [beat(None, slide(14))]),
     ("part12", "Cleanup and thank you", 16, False, [beat(None, slide(15))]),
 ]

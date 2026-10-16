@@ -1,0 +1,16 @@
+$ kubectl get pods -n helpdesk -o wide
+NAME                                 READY   STATUS    RESTARTS   AGE    IP             NODE                                          NOMINATED NODE  
+helpdesk-backend-5fc4b49d49-ssqjn    1/1     Running   0          16m    10.20.10.90    ip-10-20-10-156.ap-south-1.compute.internal   <none>          
+helpdesk-backend-5fc4b49d49-zfqp5    1/1     Running   0          16m    10.20.11.229   ip-10-20-11-57.ap-south-1.compute.internal    <none>          
+helpdesk-frontend-7cdb64db9b-76q9v   1/1     Running   0          16m    10.20.10.62    ip-10-20-10-156.ap-south-1.compute.internal   <none>          
+helpdesk-frontend-7cdb64db9b-b7bx8   1/1     Running   0          16m    10.20.11.193   ip-10-20-11-57.ap-south-1.compute.internal    <none>          
+helpdesk-postgres-0                  1/1     Running   0          102m   10.20.10.250   ip-10-20-10-156.ap-south-1.compute.internal   <none>          
+
+$ kubectl get svc,ingress -n helpdesk
+NAME                        TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)    AGE
+service/helpdesk-backend    ClusterIP   172.20.83.89     <none>        8000/TCP   28h
+service/helpdesk-frontend   ClusterIP   172.20.112.128   <none>        80/TCP     28h
+service/helpdesk-postgres   ClusterIP   172.20.127.140   <none>        5432/TCP   28h
+
+NAME                                 CLASS   HOSTS   ADDRESS                                                                          PORTS   AGE
+ingress.networking.k8s.io/helpdesk   nginx   *       afcb17c24beb84483a454772e84c72e0-39825dd2c98a88f7.elb.ap-south-1.amazonaws.com   80      28h

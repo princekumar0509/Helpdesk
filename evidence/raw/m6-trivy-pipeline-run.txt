@@ -1,0 +1,29 @@
+# GitHub Actions run #9 · job "Build, scan (Trivy) and push images" · step "Trivy scan — backend"
+# aquasecurity/trivy-action: severity HIGH,CRITICAL · ignore-unfixed · exit-code 1
+# image: ghcr.io/princekumar0509/helpdesk-backend:db935478814632f094dffe2cadae3a9d523b421c
+INFO  [debian] Detecting vulnerabilities...  os_version="13" pkg_num=87
+INFO  [python-pkg] Detecting vulnerabilities...
+Report Summary
+┌──────────────────────────────────────────────────────────────────────────────────┬────────────┬─────────────────┬─────────┐
+│                                      Target                                      │    Type    │ Vulnerabilities │ Secrets │
+├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
+│ ghcr.io/princekumar0509/helpdesk-backend:db935478814632f094dffe2cadae3a9d523b42- │   debian   │        0        │    -    │
+│ 1c (debian 13.7)                                                                 │            │                 │         │
+├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
+│ opt/venv/lib/python3.12/site-packages/alembic-1.20.0.dist-info/METADATA          │ python-pkg │        0        │    -    │
+├──────────────────────────────────────────────────────────────────────────────────┼────────────┼─────────────────┼─────────┤
+│ opt/venv/lib/python3.12/site-packages/annotated_doc-0.0.5.dist-info/METADATA     │ python-pkg │        0        │    -    │
+… 28 more targets (Python packages), all with 0 vulnerabilities
+
+# GitHub Actions run #9 · job "Build, scan (Trivy) and push images" · step "Trivy scan — frontend"
+# aquasecurity/trivy-action: severity HIGH,CRITICAL · ignore-unfixed · exit-code 1
+# image: ghcr.io/princekumar0509/helpdesk-frontend:db935478814632f094dffe2cadae3a9d523b421c
+INFO  [alpine] Detecting vulnerabilities...  os_version="3.24" repository="3.24" pkg_num=71
+Report Summary
+┌──────────────────────────────────────────────────────────────────────────────────┬────────┬─────────────────┬─────────┐
+│                                      Target                                      │  Type  │ Vulnerabilities │ Secrets │
+├──────────────────────────────────────────────────────────────────────────────────┼────────┼─────────────────┼─────────┤
+│ ghcr.io/princekumar0509/helpdesk-frontend:db935478814632f094dffe2cadae3a9d523b4- │ alpine │        0        │    -    │
+│ 21c (alpine 3.24.2)                                                              │        │                 │         │
+└──────────────────────────────────────────────────────────────────────────────────┴────────┴─────────────────┴─────────┘
+

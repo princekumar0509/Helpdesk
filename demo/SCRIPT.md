@@ -1,6 +1,6 @@
 # HelpDesk: presentation script
 
-**Total length:** about 13 minutes, in 14 parts.
+**Total length:** about 14 minutes, in 16 parts.
 
 **How to record your voice:**
 - Record **one audio file per part**, named `part01.m4a`, `part02.m4a` … `part12.m4a`. Phone voice-memo files (`.m4a`, `.mp3`, `.wav`) all work.
@@ -77,6 +77,17 @@
 > The new ticket opens on the right. I assign it to myself, then reply to the customer. Because the assigned agent replied, the ticket moves to *In progress* automatically. I can also add an internal note that the customer doesn't see. Finally I mark it as resolved.
 >
 > The backend is a REST API. This is the Swagger documentation. It has endpoints to create, read, update and delete tickets, plus statistics and comments. There are also `/health` and `/ready` endpoints for Kubernetes probes, and a `/metrics` endpoint for Prometheus.
+
+---
+
+## Part 3b: The database (≈ 25 s) · NEW, record as `part03b.m4a`
+
+**On screen:** `psql` inside the Postgres pod on EKS: the tables, the Alembic version, and the ticket rows.
+
+**Say:**
+> Here is the data itself, in PostgreSQL on EKS.
+>
+> The database has three tables: `tickets`, `ticket_comments`, and `alembic_version`, which records the migration that created them. And here are the tickets, including the one I just created and resolved.
 
 ---
 
@@ -205,6 +216,21 @@
 > For monitoring, the backend exposes a `/metrics` endpoint in Prometheus format. **Prometheus** finds it automatically through a ServiceMonitor. On the targets page both backend pods are *UP*.
 >
 > **Grafana** shows the "HelpDesk API" dashboard: request rate, the 5xx error ratio, latency percentiles, pods up, and CPU per pod. The dashboard is installed automatically by the Helm chart.
+
+---
+
+## Part 10b: Troubleshooting (≈ 45 s) · NEW, record as `part10b.m4a`
+
+**On screen:** a deliberately broken Deployment on EKS being diagnosed and fixed.
+
+**Say:**
+> Finally, troubleshooting. I apply a lab Deployment that has a wrong image tag.
+>
+> `kubectl get pods` shows the pod stuck in *ImagePullBackOff*. `kubectl describe` explains why: the image tag doesn't exist in the registry.
+>
+> I fix it by setting the correct image. The rollout finishes and the pod is *Running*. Then I delete the lab.
+>
+> The method is always the same: get, describe, read the events, fix the cause.
 
 ---
 
