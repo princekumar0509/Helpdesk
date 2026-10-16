@@ -1,0 +1,10 @@
+# Image tags ArgoCD deploys. The CI "GitOps" job rewrites the two tags with the commit SHA
+# after the images pass the Trivy scan and are pushed to GHCR. Don't edit by hand.
+backend:
+  image:
+    repository: ghcr.io/princekumar0509/helpdesk-backend
+    tag: 069581fe68cebe3968b05c2d6468a87faca57a79
+frontend:
+  image:
+    repository: ghcr.io/princekumar0509/helpdesk-frontend
+    tag: 069581fe68cebe3968b05c2d6468a87faca57a79

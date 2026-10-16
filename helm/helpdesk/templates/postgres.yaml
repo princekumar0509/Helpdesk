@@ -1,5 +1,8 @@
 {{- $name := include "helpdesk.postgresName" . -}}
-{{- $password := include "helpdesk.postgresPassword" . -}}
+{{- $secret := include "helpdesk.postgresSecretName" . -}}
+{{- $password := "" -}}
+{{- if not .Values.postgres.existingSecret }}
+{{- $password = include "helpdesk.postgresPassword" . }}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -12,6 +15,7 @@ stringData:
   password: {{ $password | quote }}
   database-url: {{ printf "postgresql+psycopg://%s:%s@%s:5432/%s" .Values.postgres.username $password $name .Values.postgres.database | quote }}
 ---
+{{- end }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -46,7 +50,7 @@ spec:
         {{- include "helpdesk.labels" . | nindent 8 }}
         {{- include "helpdesk.selectorLabels" (dict "ctx" . "component" "postgres") | nindent 8 }}
       annotations:
-        checksum/secret: {{ $password | sha256sum | trunc 12 }}
+        checksum/secret: {{ $password | default $secret | sha256sum | trunc 12 }}
     spec:
       securityContext:
         {{- include "helpdesk.podSecurityContext" . | nindent 8 }}
@@ -63,9 +67,9 @@ spec:
             - name: POSTGRES_DB
               value: {{ .Values.postgres.database | quote }}
             - name: POSTGRES_USER
-              valueFrom: {secretKeyRef: {name: {{ $name }}, key: username}}
+              valueFrom: {secretKeyRef: {name: {{ $secret }}, key: username}}
             - name: POSTGRES_PASSWORD
-              valueFrom: {secretKeyRef: {name: {{ $name }}, key: password}}
+              valueFrom: {secretKeyRef: {name: {{ $secret }}, key: password}}
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata   # subdir: EBS volumes contain lost+found
           readinessProbe:

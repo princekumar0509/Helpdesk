@@ -25,6 +25,9 @@ app.kubernetes.io/component: {{ .component }}
 {{- define "helpdesk.frontendName" -}}{{ include "helpdesk.fullname" . }}-frontend{{- end -}}
 {{- define "helpdesk.postgresName" -}}{{ include "helpdesk.fullname" . }}-postgres{{- end -}}
 
+{{/* Secret holding the DB credentials: an existing one (GitOps/ArgoCD) or the one this chart creates. */}}
+{{- define "helpdesk.postgresSecretName" -}}{{ .Values.postgres.existingSecret | default (include "helpdesk.postgresName" .) }}{{- end -}}
+
 {{/* Reuse the existing password on upgrade so the database keeps working. */}}
 {{- define "helpdesk.postgresPassword" -}}
 {{- if .Values.postgres.password -}}

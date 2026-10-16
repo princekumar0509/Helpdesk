@@ -29,6 +29,9 @@ postgres:
   username: helpdesk
   # Leave empty to auto-generate a password on first install (kept across upgrades).
   password: ""
+  # Use a Secret that already exists (keys: username, password, database-url) instead of creating one.
+  # Needed under ArgoCD, which renders the chart without cluster access, so the password could not be reused.
+  existingSecret: ""
   storage:
     size: 5Gi
     storageClassName: ""   # "" = cluster default (gp2 on EKS)

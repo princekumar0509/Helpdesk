@@ -1,0 +1,43 @@
+# GitOps: ArgoCD keeps the helpdesk namespace in sync with helm/helpdesk on main.
+#   kubectl apply -f argocd/helpdesk-application.yaml
+# CI never talks to the cluster to deploy: it commits new image tags to helm/helpdesk/values-image.yaml,
+# and ArgoCD notices the commit and rolls the release forward.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: helpdesk
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/princekumar0509/Helpdesk.git
+    targetRevision: main
+    path: helm/helpdesk
+    helm:
+      releaseName: helpdesk
+      valueFiles:
+        - values-prod.yaml
+        - values-image.yaml
+      parameters:
+        # ArgoCD renders the chart without cluster access, so the chart can't reuse a generated
+        # password; point it at the Secret that already holds the database credentials.
+        - name: postgres.existingSecret
+          value: helpdesk-postgres
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: helpdesk
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - RespectIgnoreDifferences=true
+  ignoreDifferences:
+    # The HPA owns the backend replica count.
+    - group: apps
+      kind: Deployment
+      name: helpdesk-backend
+      jsonPointers:
+        - /spec/replicas

@@ -1,0 +1,15 @@
+# Values for the argo-cd Helm chart (argo/argo-cd 10.10.3, Argo CD v3.5).
+#   helm upgrade --install argocd argo/argo-cd --version 10.10.3 -n argocd --create-namespace -f argocd/argocd-values.yaml
+# Small footprint for a 2-node cluster: no Dex (local admin login only), no notifications.
+dex:
+  enabled: false
+notifications:
+  enabled: false
+configs:
+  params:
+    server.insecure: true   # TLS ends at the port-forward / ingress, not inside the pod
+  cm:
+    timeout.reconciliation: 60s   # poll Git every minute (no webhook needed)
+server:
+  service:
+    type: ClusterIP   # reach the UI with: kubectl port-forward -n argocd svc/argocd-server 8080:80
