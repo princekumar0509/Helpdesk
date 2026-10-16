@@ -40,6 +40,7 @@ The same chart now runs on **AWS EKS** in account 284874841362, `ap-south-1`. It
 | | [raw/eks-kubectl-get.txt](raw/eks-kubectl-get.txt), [raw/eks-helm-list.txt](raw/eks-helm-list.txt), [raw/eks-aws-cluster-vpc.txt](raw/eks-aws-cluster-vpc.txt) | Nodes, pods, Services, Ingress, HPA and PVC on EKS; `helm list`; cluster and subnet details from the AWS CLI |
 | **M5** CI/CD (this repo) | [helpdesk-pipeline-green.png](helpdesk-pipeline-green.png) | [Run #9](https://github.com/princekumar0509/Helpdesk/actions/runs/38956576525) in this repository: test → build + Trivy + push to GHCR → GitOps commit of the new tags → Argo CD rollout verified on EKS, all green |
 | **M6** Trivy (pipeline) | [m6-trivy-pipeline-run.png](m6-trivy-pipeline-run.png), [raw](raw/m6-trivy-pipeline-run.txt) | Trivy output taken from the logs of pipeline run #9: backend (Debian 13 + 29 Python packages) and frontend (Alpine) both report **0** fixable HIGH/CRITICAL vulnerabilities |
+| **M7** Terraform destroy | [m7-terraform-destroy.png](m7-terraform-destroy.png), [full log](raw/m7-terraform-destroy.txt), [AWS check](raw/m7-aws-after-destroy.txt) | `terraform destroy`: **65 destroyed**. Then AWS (`ap-south-1`) shows no EKS cluster, VPC, NAT gateway, Elastic IP, running instance, volume or load balancer |
 | **M8** Kubernetes (EKS) | [eks-kubectl-pods-svc.png](eks-kubectl-pods-svc.png), [eks-helm-list.png](eks-helm-list.png) | `kubectl get pods` (all Running), `kubectl get svc,ingress` (ClusterIP Services, Ingress on the AWS NLB), `helm list -A` and the Argo CD application Synced/Healthy |
 | **GitOps** | [eks-argocd-app.png](eks-argocd-app.png) | Argo CD on EKS: application `helpdesk` **Healthy** and **Synced** to `main`, auto-sync on, with the resource tree it manages (Deployments, Services, ReplicaSets, Pods, ConfigMap) |
 | **M9** Observability | [eks-prometheus-targets.png](eks-prometheus-targets.png) | Prometheus on EKS: `serviceMonitor/helpdesk/helpdesk-backend` **2/2 UP** |
@@ -49,4 +50,4 @@ The console screenshots were taken through a one-hour, read-only federated sign-
 
 The `m8-*` and `m9-*` files above are the earlier run on a local **kind** cluster, made while the AWS account was waiting for activation. They use the same chart and the same CI-built images.
 
-**Still to do after grading:** `terraform destroy` and its screenshot. See [../README.md](../README.md) §6.
+The AWS deployment was destroyed after the demo was recorded; see the **M7 Terraform destroy** row above.

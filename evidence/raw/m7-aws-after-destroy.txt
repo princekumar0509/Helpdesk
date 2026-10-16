@@ -1,0 +1,10 @@
+$ aws eks list-clusters
+--------------
+|ListClusters|
++------------+
+$ aws ec2 describe-vpcs (helpdesk)
+$ aws ec2 describe-nat-gateways (active)
+$ aws ec2 describe-addresses
+$ aws ec2 describe-instances (running)
+$ aws ec2 describe-volumes
+$ aws elbv2 describe-load-balancers

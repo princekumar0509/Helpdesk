@@ -8,7 +8,7 @@
 
 The app is deliberately small. The project is the delivery system around it. Every commit is linted, tested and security-scanned by GitHub Actions, built into images tagged with the commit SHA, and published to GitHub Container Registry. The pipeline then commits the new tag to Git, and Argo CD deploys it to AWS EKS. Prometheus and Grafana watch the app, and Terraform built the AWS network and cluster it runs on.
 
-![HelpDesk running on AWS EKS, opened through the Kubernetes Ingress and the AWS load balancer](evidence/eks-app-via-ingress.png)
+![HelpDesk running on AWS EKS, opened through the Kubernetes Ingress and the AWS load balancer (the AWS deployment has since been destroyed)](evidence/eks-app-via-ingress.png)
 
 **Where to look**
 
@@ -207,6 +207,10 @@ $(terraform output -raw configure_kubectl)
 ![AWS Console: EKS cluster helpdesk-dev-eks, Active, Kubernetes 1.34](evidence/eks-aws-console-cluster.png)
 ![AWS Console: the node group, Active, desired size 2](evidence/eks-aws-console-nodegroup.png)
 
+After the demo was recorded, everything was destroyed. The Kubernetes-created load balancer and EBS volume were removed first, then `terraform destroy` removed all 65 resources, and a check against AWS found nothing left:
+
+![terraform destroy: 65 destroyed; no cluster, VPC, NAT gateway, Elastic IP, instance, volume or load balancer left](evidence/m7-terraform-destroy.png)
+
 ## 9. Kubernetes and Helm
 
 The [`helm/helpdesk`](helm/helpdesk/) chart deploys:
@@ -295,7 +299,9 @@ Each manifest in [`troubleshooting/`](troubleshooting/) has the symptoms, the co
 | What | Cost |
 |---|---|
 | GitHub repository, Actions, GHCR | free (public repository) |
-| AWS: EKS control plane, NAT gateway, 2 nodes, load balancer | about $7 per day while running, paid from the AWS Free plan credits |
+| AWS: EKS control plane, NAT gateway, 2 nodes, load balancer | about $7 per day while it ran, paid from the AWS Free plan credits |
+
+**Status: destroyed.** The AWS infrastructure was torn down after the demo was recorded (65 resources destroyed, nothing left in `ap-south-1`), so the load-balancer URL in the screenshots no longer works. The order below is the one that was used ([output](evidence/raw/m7-terraform-destroy.txt)).
 
 Tear down in this order. Kubernetes created the load balancer and the EBS volume, so `terraform destroy` alone would leave them behind:
 
