@@ -1,5 +1,7 @@
 # Grading evidence — HelpDesk capstone
 
+> These screenshots and the linked pipeline runs were captured while the project lived in the `session21-python/` folder of [princekumar0509/devops-heros](https://github.com/princekumar0509/devops-heros), before it moved into this repository with its full commit history.
+
 Screenshots were captured on 2026-10-14. `m3-commit-history.png` was re-captured on 2026-10-15 after the history was rewritten, and the `eks-*` files were captured on 2026-10-16 from the live AWS deployment. Terminal images are renderings of the real command output. The exact text of each is in [`raw/`](raw/).
 
 | Module | Evidence | What it shows |

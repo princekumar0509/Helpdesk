@@ -67,7 +67,7 @@ variable "node_max_size" {
 }
 
 variable "github_repository" {
-  description = "GitHub repo (owner/name) allowed to deploy via OIDC, e.g. \"princekumar0509/devops-heros\". Empty = skip."
+  description = "GitHub repo (owner/name) allowed to deploy via OIDC, e.g. \"princekumar0509/Helpdesk\". Empty = skip."
   type        = string
   default     = ""
 }

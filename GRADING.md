@@ -236,18 +236,55 @@ The application must expose metrics and those metrics must be visible in a dashb
 
 The presentation is the final demonstration that the student understands what they built and why each component exists.
 
+> **Video submission is MANDATORY.** A missing video results in zero points for this module, regardless of other artifacts.
+
 ### Grading Criteria
 
 | Criterion | Points |
 |-----------|--------|
-| `README.md` in the project root explaining what the application does | 2 |
-| Live demo: commit a change, watch the pipeline run, see the deployment update | 3 |
+| `README.md` in the project root with full technical documentation | 2 |
+| Presentation video uploaded to the GitHub repo covering full project walkthrough | 2 |
+| PPT slide deck committed to the GitHub repo | 1 |
 
+### Video Requirements
+
+The presentation video must:
+- **Present your PPT slides** first, covering what you built and the overall architecture
+- **Run a full live project walkthrough** including:
+  - CI/CD pipeline — trigger a push and show the GitHub Actions run completing end-to-end
+  - Codebase overview — key source files, folder structure, and design decisions
+  - Terraform — `terraform plan` / apply output and AWS Console proof of VPC + EKS
+  - ArgoCD — show the synced application and GitOps flow
+  - Kubernetes — `kubectl get pods`, services, ingress running in the cluster
+  - Prometheus — Targets page showing the application as `UP`
+  - Grafana — live dashboard panel with application metrics
+- Be clear enough that the grader can follow along without asking clarifying questions
+- Be uploaded directly to the **GitHub repository** (under a `demo/` folder or as a release asset)
+
+### PPT Requirements
+
+- Minimum 8 slides covering: project overview, tech stack, architecture diagram, CI/CD flow, infrastructure, K8s setup, observability, and key learnings
+- Committed to the GitHub repository (e.g., `demo/presentation.pptx` or `demo/slides.pdf`)
+
+### README.md Requirements
+
+The `README.md` must include:
+- Project description and purpose
+- Architecture diagram or component overview
+- Tech stack list (languages, tools, platforms)
+- Local setup instructions (`docker compose up`)
+- CI/CD pipeline description
+- Terraform infrastructure summary
+- Kubernetes / Helm deployment steps
+- Observability setup (Prometheus + Grafana)
+- Any known issues or limitations
 
 ### What to Submit
 
-- `README.md` in the repository root
-- Live demo during the presentation session (or a recorded walkthrough if remote)
+- `README.md` in the repository root (complete technical documentation)
+- `demo/` folder in the repository containing:
+  - Presentation video file (MP4 preferred) — **MANDATORY**
+  - PPT / PDF slide deck — **MANDATORY**
 
 ---
 
@@ -297,8 +334,9 @@ Observability
   [ ] Grafana dashboard screenshot
 
 Documentation
-  [ ] README.md present
-  [ ] Presentation completed or recording submitted
+  [ ] README.md present with all technical sections
+  [ ] demo/presentation video uploaded to GitHub repo (MANDATORY)
+  [ ] demo/slides PPT or PDF committed to GitHub repo (MANDATORY)
 ```
 
 ---

@@ -38,7 +38,8 @@ The application is deliberately small. The point of the project is the delivery 
 ## Repository layout
 
 ```text
-session21-python/
+Helpdesk/
+├── .github/workflows/ci-cd.yml   CI/CD pipeline: test → build + Trivy + push → deploy
 ├── backend/                 FastAPI app
 │   ├── app/                 main.py (health/ready/metrics), routes.py (ticket API), models, schemas, db, config
 │   ├── alembic/versions/    0001_create_tickets.py — tickets + ticket_comments tables
@@ -52,9 +53,9 @@ session21-python/
 ├── k8s/                     namespace + optional GHCR pull-secret helper
 ├── monitoring/              kube-prometheus-stack values (Prometheus, Grafana, alert rules)
 ├── troubleshooting/         3 deliberately broken manifests with investigation + fix steps
-└── scripts/                 seed-data.sh (demo data), load-test.sh (traffic for Grafana/HPA)
-
-../.github/workflows/session21-helpdesk.yml   CI/CD pipeline (GitHub only runs workflows from the repo root)
+├── scripts/                 seed-data.sh (demo data), load-test.sh (traffic for Grafana/HPA)
+├── evidence/                grading screenshots and raw command output for every module
+└── demo/                    presentation deck (PPTX + PDF), narration script and video
 ```
 
 ---
@@ -88,7 +89,7 @@ curl -X POST localhost:8000/api/tickets -H 'Content-Type: application/json' \
 ## 1. Run locally with Docker Compose
 
 ```bash
-cd session21-python
+cd Helpdesk
 docker compose up --build        # first build takes a few minutes
 ./scripts/seed-data.sh           # optional: load demo tickets
 ```
@@ -137,7 +138,7 @@ Tests run **before** any image is built in CI. If they fail, the pipeline stops 
 
 ## 4. CI/CD (GitHub Actions)
 
-The workflow is [`.github/workflows/session21-helpdesk.yml`](../.github/workflows/session21-helpdesk.yml). It runs on every push or PR to `main` that touches `session21-python/`.
+The workflow is [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml). It runs on every push or pull request to `main`, and can also be started by hand (*Run workflow*).
 
 | Job | What happens |
 |---|---|
@@ -288,7 +289,7 @@ The screenshots for every module are in [`evidence/`](evidence/README.md), with 
 | M2 Tests | `backend/tests/`, `backend/pytest.ini` | `pytest -v` (19 passed) |
 | M3 Git | repo history, `.gitignore` | commit history (≥ 10 commits) |
 | M4 Docker | `backend/Dockerfile`, `frontend/Dockerfile` (multi-stage, both non-root) | `docker compose up --build`, http://localhost:3000 |
-| M5 CI/CD | `../.github/workflows/session21-helpdesk.yml` | green run, GHCR packages with SHA tags |
+| M5 CI/CD | `.github/workflows/ci-cd.yml` | green run, GHCR packages with SHA tags |
 | M6 Trivy | Trivy steps in the workflow | Trivy output in the run log |
 | M7 Terraform | `terraform/`, `terraform.tfvars.example` | `plan`, AWS console VPC + EKS, `destroy` |
 | M8 K8s + Helm | `k8s/`, `helm/helpdesk/` | `kubectl get pods/svc`, `helm list`, app via Ingress |

@@ -4,7 +4,7 @@
 
 **How to record your voice:**
 - Record **one audio file per part**, named `part01.m4a`, `part02.m4a` … `part12.m4a`. Phone voice-memo files (`.m4a`, `.mp3`, `.wav`) all work.
-- Put the 12 files in `session21-python/presentation/audio/`. That folder is git-ignored, so your voice files are not pushed to GitHub.
+- Put the 12 files in `demo/audio/`. That folder is git-ignored, so your voice files are not pushed to GitHub.
 - Speak at a calm pace. If you stumble, stop and record that part again. Don't try to fix it mid-sentence.
 - You don't need to match the timing exactly. The video for each part is stretched or trimmed to fit your audio.
 - To combine them with the screen recordings, run `python make_video.py --audio audio/` in this folder. It writes `recording/HelpDesk-Presentation.mp4`.
@@ -196,6 +196,6 @@
 **Say:**
 > Finally, cost. EKS costs money every hour, so after the evaluation I'll uninstall the Helm releases and run `terraform destroy`, which removes every AWS resource that Terraform created.
 >
-> All the code, documentation and evidence screenshots are in my public GitHub repository, `devops-heros`, in the `session21-python` folder.
+> All the code, documentation and evidence screenshots are in my public GitHub repository, `Helpdesk`.
 >
 > Thank you for watching.
