@@ -18,7 +18,6 @@ The app is deliberately small. The project is the delivery system around it. Eve
 | **Slide deck (15 slides)** | [`demo/HelpDesk-Presentation.pdf`](demo/HelpDesk-Presentation.pdf) · [`.pptx`](demo/HelpDesk-Presentation.pptx) |
 | Every rubric item and its proof | [`evidence/README.md`](evidence/README.md): 40 screenshots plus raw command output |
 | A green pipeline run | [Run #9](https://github.com/princekumar0509/Helpdesk/actions/runs/38956576525): test → build + Trivy + push → GitOps commit → rollout verified on EKS |
-| Narration script | [`demo/SCRIPT.md`](demo/SCRIPT.md) |
 | Troubleshooting labs | [`troubleshooting/`](troubleshooting/) |
 | Terraform details | [`terraform/README.md`](terraform/README.md) |
 
