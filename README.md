@@ -291,7 +291,7 @@ cd terraform && terraform destroy
 | File | What it is |
 |---|---|
 | [`demo/HelpDesk-Presentation.pptx`](demo/HelpDesk-Presentation.pptx), [`.pdf`](demo/HelpDesk-Presentation.pdf) | 14-slide deck: overview, architecture, modules, CI/CD, Terraform, Kubernetes, observability, lessons learned |
-| [`demo/HelpDesk-Presentation.mp4`](demo/HelpDesk-Presentation.mp4) | Recorded walkthrough: slides, then the live system (app, tests, Docker, pipeline, Terraform + AWS Console, Kubernetes, HPA, Prometheus, Grafana) |
+| [`demo/HelpDesk-Presentation.mp4`](demo/HelpDesk-Presentation.mp4) | 13-minute narrated walkthrough: slides and architecture, codebase, the live app, tests, Docker, a live commit through the pipeline, Trivy + GHCR, Terraform + AWS Console, Argo CD (GitOps, self-heal), Kubernetes, HPA, Prometheus, Grafana |
 | [`demo/SCRIPT.md`](demo/SCRIPT.md) | Narration script, part by part |
 | [`demo/make_video.py`](demo/make_video.py) | Assembles the video from the screen recordings and the narration |
 

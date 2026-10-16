@@ -1,6 +1,6 @@
 # HelpDesk: presentation script
 
-**Total length:** about 14 minutes, in 14 parts (12 recorded, plus the new parts 2b and 8b).
+**Total length:** about 13 minutes, in 14 parts.
 
 **How to record your voice:**
 - Record **one audio file per part**, named `part01.m4a`, `part02.m4a` … `part12.m4a`. Phone voice-memo files (`.m4a`, `.mp3`, `.wav`) all work.

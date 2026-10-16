@@ -45,7 +45,18 @@ PARTS = [
         beat("support ticketing system", slide(2)),
         beat("In this presentation", slide(4))]),
     ("part02", "Architecture", 60, False, [beat(None, slide(3))]),
-    ("part02b", "Codebase walkthrough", 60, True, [beat(None, clip("p02b-codebase.webm", 0.5))]),
+    ("part02b", "Codebase walkthrough", 63, True, [
+        beat(None, clip("p02b-codebase.webm", 1.0, 15.0)),
+        beat("backend is the fast", clip("p02b-codebase.webm", 15.0, 31.0)),
+        beat("Alembic folder", clip("p02b-codebase.webm", 31.0, 34.0)),
+        beat("the test folder", clip("p02b-codebase.webm", 34.0, 38.0)),
+        beat("Frontend is the react", clip("p02b-codebase.webm", 38.0, 43.0)),
+        beat("runs the whole stack", clip("p02b-codebase.webm", 43.0, 47.0)),
+        beat("terraform creates", clip("p02b-codebase.webm", 47.0, 52.0)),
+        beat("Helm helpdesk is", clip("p02b-codebase.webm", 52.0, 57.0)),
+        beat("Argo CD folder", clip("p02b-codebase.webm", 57.0, 66.0)),
+        beat("monitoring holds", clip("p02b-codebase.webm", 66.0, 69.0)),
+        beat("GitHub workflow", clip("p02b-codebase.webm", 69.0))]),
     ("part03", "The application", 78, False, [
         beat(None, clip("p03-app.webm", 0.5, 7.4)),
         beat("Let me create a new ticket", clip("p03-app.webm", 7.4, 24.5)),
@@ -71,8 +82,8 @@ PARTS = [
         beat("Here in the AWS console", clip("p08b-console.webm", 36.0))]),
     ("part08b", "GitOps with Argo CD", 60, True, [
         beat(None, slide(12)),
-        beat("Here the helpdesk application", clip("p08c-argocd.webm", 0.5, 34.0)),
-        beat("Self-heal is on", clip("p08c-argocd.webm", 34.0))]),
+        beat("Here the helpdesk application", clip("p08c-argocd.webm", 14.0, 30.0)),
+        beat("Self-heal is on", clip("p08c-argocd.webm", 30.0, 55.0))]),
     ("part09", "Kubernetes and Helm", 56, False, [
         beat(None, clip("p09a-kubectl.webm", 0.5)),
         beat("Now I refresh the browser", clip("p09b-live-change.webm", 9.0))]),
