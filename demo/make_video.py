@@ -30,8 +30,12 @@ SLIDES = REC / "slides"
 def slide(n, secs=8):
     return {"img": SLIDES / f"slide-{n:02d}.png", "dur": secs}
 
-def clip(name, start=0.0, end=None, speed=1.0):
-    return {"vid": REC / name, "start": start, "end": end, "speed": speed}
+def clip(name, start=0.0, end=None, speed=1.0, natural=False):
+    """natural=True: never speed this footage up (terminal typing); the narration waits for it instead."""
+    return {"vid": REC / name, "start": start, "end": end, "speed": speed, "natural": natural}
+
+def term(name, start=0.5, end=None):
+    return clip(name, start, end, natural=True)
 
 def beat(cue, *pieces):
     """cue: phrase the narrator says when this beat starts (None = start of the part)."""
@@ -39,6 +43,8 @@ def beat(cue, *pieces):
 
 # (key, title, preview length, optional, beats). Order follows SUBMISSION.md: slides and
 # architecture, codebase, the demo modules, CI/CD, Terraform, Argo CD, Kubernetes, monitoring.
+CUT10C = 14.1  # p10c: the moment the fix is typed, after describe has shown the events
+
 PARTS = [
     ("part01", "Introduction", 45, False, [
         beat(None, slide(1)),
@@ -64,38 +70,38 @@ PARTS = [
         beat("I can also add an internal note", clip("p03-app.webm", 43.5, 51.0)),
         beat("Finally I mark it as resolved", clip("p03-app.webm", 51.0, 61.0)),
         beat("The backend is REST API", clip("p03-app.webm", 61.0))]),
-    ("part03b", "The database", 25, True, [beat(None, clip("p03b-database.webm", 0.5))]),
+    ("part03b", "The database", 25, True, [beat(None, term("p03b-database.webm"))]),
     ("part04", "Testing", 47, False, [
         beat(None, slide(6)),
-        beat("Ruff is a fast Python linter", clip("p04-tests.webm", 0.5))]),
+        beat("Ruff is a fast Python linter", term("p04-tests.webm"))]),
     ("part05", "Docker", 49, False, [
         beat(None, slide(7)),
-        beat("The backend Docker file has two stages", clip("p05-docker.webm", 0.5))]),
+        beat("The backend Docker file has two stages", term("p05-docker.webm"))]),
     ("part06", "CI/CD live change", 74, False, [
-        beat(None, clip("p06a-commit.webm", 0.5)),
+        beat(None, term("p06a-commit.webm")),
         beat("starts the github action workflow", clip("p06b-pipeline.webm", 1.0, None, 3.0)),
         beat("All three jobs are green", slide(8))]),
     ("part07", "Trivy and GHCR", 33, False, [
         beat(None, slide(9)),
         beat("So there is less software", clip("p07-ghcr.webm", 0.5, 20.0))]),
     ("part08", "Terraform", 72, False, [
-        beat(None, clip("p08a-terraform.webm", 0.5)),
+        beat(None, term("p08a-terraform.webm")),
         beat("Here in the AWS console", clip("p08b-console.webm", 36.0))]),
     ("part08b", "GitOps with Argo CD", 60, True, [
         beat(None, slide(12)),
         beat("Here the helpdesk application", clip("p08c-argocd.webm", 14.0, 30.0)),
         beat("Self-heal is on", clip("p08c-argocd.webm", 30.0, 55.0))]),
     ("part09", "Kubernetes and Helm", 56, False, [
-        beat(None, clip("p09a-kubectl.webm", 0.5)),
+        beat(None, term("p09a-kubectl.webm")),
         beat("Now I refresh the browser", clip("p09b-live-change.webm", 9.0))]),
     ("part10", "Autoscaling and monitoring", 61, False, [
-        beat(None, clip("p10a-hpa.webm", 0.5)),
+        beat(None, term("p10a-hpa.webm")),
         beat("For monitoring", clip("p10b-monitoring.webm", 0.5, 7.5)),
         beat("finds it automatically", clip("p10b-monitoring.webm", 13.0, 18.0)),
         beat("Grafana shows", clip("p10b-monitoring.webm", 31.0))]),
     ("part10b", "Troubleshooting", 45, True, [
-        beat(None, clip("p10c-troubleshooting.webm", 0.5, 27.0)),
-        beat("I fix it", clip("p10c-troubleshooting.webm", 27.0))]),
+        beat(None, term("p10c-troubleshooting.webm", 0.5, CUT10C)),
+        beat("I fix it", term("p10c-troubleshooting.webm", CUT10C))]),
     ("part11", "Challenges", 63, False, [beat(None, slide(14))]),
     ("part12", "Cleanup and thank you", 16, False, [beat(None, slide(15))]),
 ]
@@ -127,15 +133,18 @@ def concat(files, out, tmp):
     lst.write_text("".join(f"file '{f}'\n" for f in files))
     run(["-f", "concat", "-safe", "0", "-i", lst, "-c", "copy", out])
 
-def fit(src, slot, out, max_speed):
-    """Fit footage to exactly `slot` seconds: speed up (capped) if long, hold the last frame if short."""
+def fit(src, slot, out, max_speed, natural=False):
+    """Fit footage to `slot` seconds: speed up (capped) if long, hold the last frame if short.
+    natural footage is never sped up; the slot grows instead and the caller pads the narration."""
     have = duration(src)
-    speed = min(max(have / slot, 1.0), max_speed)
+    if natural and have > slot:
+        slot = have
+    speed = 1.0 if natural else min(max(have / slot, 1.0), max_speed)
     # setpts only when speeding up: a no-op setpts in front of tpad stops the last-frame hold from working
     vf = (f"setpts=PTS/{speed:.4f}," if speed > 1.0 else "") + \
          f"tpad=stop_mode=clone:stop_duration={max(slot - have / speed, 0) + 0.5:.2f},trim=duration={slot:.3f},fps=30,format=yuv420p"
     run(["-i", src, "-vf", vf, *ENC, "-fps_mode", "cfr", "-an", out])
-    return have, speed
+    return have, speed, slot
 
 def norm(w):
     return re.sub(r"[^a-z0-9]", "", w.lower())
@@ -186,7 +195,7 @@ def main():
                 starts.append(max(t - 0.3, prev) if i else 0.0)
                 prev = starts[-1]
             ends = starts[1:] + [total]
-            beat_files, info = [], []
+            beat_files, info, lens = [], [], []
             for i, (b, s, e) in enumerate(zip(beats, starts, ends)):
                 pieces = []
                 for j, p in enumerate(b["pieces"]):
@@ -196,15 +205,20 @@ def main():
                 joined = Path(tmp) / f"{key}_{i}_joined.mp4"
                 concat(pieces, joined, tmp)
                 out = Path(tmp) / f"{key}_{i}_fit.mp4"
-                have, speed = fit(joined, max(e - s, 0.5), out, a.max_speed)
+                natural = any(p.get("natural") for p in b["pieces"])
+                have, speed, slot = fit(joined, max(e - s, 0.5), out, a.max_speed, natural)
                 beat_files.append(out)
-                info.append(f"{s:5.1f}s x{speed:.2f}")
+                lens.append(slot)
+                info.append(f"{s:5.1f}s x{speed:.2f}" + (f" +{slot - (e - s):.1f}s pause" if slot > e - s + 0.05 else ""))
             video = Path(tmp) / f"{key}_video.mp4"
             concat(beat_files, video, tmp)
             out = Path(tmp) / f"{key}.mp4"
+            total = sum(lens)
             if audio:
                 asrc = ["-i", audio]
-                af = f"[1:a]aresample=48000,apad=whole_dur={total:.2f}[a]"
+                parts_a = [f"[1:a]aresample=48000,atrim=start={s:.3f}:end={e:.3f},asetpts=PTS-STARTPTS,apad=whole_dur={L:.3f}[a{k}]"
+                           for k, (s, e, L) in enumerate(zip(starts, ends, lens))]
+                af = ";".join(parts_a) + ";" + "".join(f"[a{k}]" for k in range(len(lens))) + f"concat=n={len(lens)}:v=0:a=1[a]"
             else:
                 asrc = ["-f", "lavfi", "-t", f"{total:.2f}", "-i", "anullsrc=r=48000:cl=stereo"]
                 af = "[1:a]anull[a]"
