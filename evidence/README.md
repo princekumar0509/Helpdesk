@@ -10,7 +10,7 @@ Screenshots were captured on 2026-10-14. `m3-commit-history.png` was re-captured
 | | [m1-api-swagger.png](m1-api-swagger.png) | FastAPI Swagger UI listing all REST endpoints |
 | | [m1-postgres-table.png](m1-postgres-table.png) | Rows in the PostgreSQL `tickets` table (schema created by Alembic) |
 | **M2** Tests | [m2-pytest-passing.png](m2-pytest-passing.png) | `pytest -v`: 19 passed |
-| **M3** Git | [m3-commit-history.png](m3-commit-history.png) | Commit history on GitHub with descriptive messages |
+| **M3** Git | [m3-commit-history.png](m3-commit-history.png) | Commit history of this repository on GitHub, with descriptive messages |
 | **M4** Docker | [m4-docker-compose.png](m4-docker-compose.png) | `docker compose up --build`: all 3 services healthy; `id` shows backend uid 10001 and frontend uid 101 (non-root) |
 | **M5** CI/CD | [m5-pipeline-green.png](m5-pipeline-green.png), [m5-build-scan-push-job.png](m5-build-scan-push-job.png) | Green GitHub Actions run: test → build → Trivy → push. [Run link](https://github.com/princekumar0509/devops-heros/actions/runs/37872148985) |
 | | [m5-ghcr-backend-package.png](m5-ghcr-backend-package.png), [m5-ghcr-frontend-package.png](m5-ghcr-frontend-package.png) | GHCR packages tagged with the commit SHA `d38b280…` (not `latest`) |
@@ -38,6 +38,7 @@ The same chart now runs on **AWS EKS** in account 284874841362, `ap-south-1`. It
 | | [eks-aws-console-vpc.png](eks-aws-console-vpc.png), [eks-aws-console-subnets.png](eks-aws-console-subnets.png) | VPC `helpdesk-dev-vpc` (10.20.0.0/16): **2 public and 2 private subnets** in ap-south-1a/1b, with their route tables |
 | **M8** Kubernetes + Helm | [eks-app-via-ingress.png](eks-app-via-ingress.png) | App served from the public AWS NLB through ingress-nginx: `/` → frontend, `/api` → backend |
 | | [raw/eks-kubectl-get.txt](raw/eks-kubectl-get.txt), [raw/eks-helm-list.txt](raw/eks-helm-list.txt), [raw/eks-aws-cluster-vpc.txt](raw/eks-aws-cluster-vpc.txt) | Nodes, pods, Services, Ingress, HPA and PVC on EKS; `helm list`; cluster and subnet details from the AWS CLI |
+| **M5** CI/CD (this repo) | [helpdesk-pipeline-green.png](helpdesk-pipeline-green.png) | [Run #9](https://github.com/princekumar0509/Helpdesk/actions/runs/38956576525) in this repository: test → build + Trivy + push to GHCR → GitOps commit of the new tags → Argo CD rollout verified on EKS, all green |
 | **GitOps** | [eks-argocd-app.png](eks-argocd-app.png) | Argo CD on EKS: application `helpdesk` **Healthy** and **Synced** to `main`, auto-sync on, with the resource tree it manages (Deployments, Services, ReplicaSets, Pods, ConfigMap) |
 | **M9** Observability | [eks-prometheus-targets.png](eks-prometheus-targets.png) | Prometheus on EKS: `serviceMonitor/helpdesk/helpdesk-backend` **2/2 UP** |
 | | [eks-grafana-dashboard.png](eks-grafana-dashboard.png) | "HelpDesk API" dashboard on EKS with live traffic: 2.2 req/s, 0% 5xx, p95 95 ms, 2 backend pods |
